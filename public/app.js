@@ -1,13 +1,13 @@
 const grid=document.getElementById("grid"),msg=document.getElementById("msg"),crumbs=document.getElementById("crumbs");
 const player=document.getElementById("player"),frame=document.getElementById("frame");
-let stack=[];
+let stack=[],bust="";
 const card=(t,c,icon,fn)=>{const d=document.createElement("div");d.className="card";
 d.innerHTML=`<div class="img" style="${c?`background-image:url('${c}')`:""}">${c?"":icon}</div><p></p>`;
 d.querySelector("p").textContent=t;d.onclick=fn;grid.appendChild(d)};
 async function load(){
   grid.innerHTML="";msg.textContent="Carregando...";
   const cur=stack[stack.length-1];
-  const r=await fetch("/api/list"+(cur?"?folder="+cur.id:"")),j=await r.json();
+  const r=await fetch("/api/list?"+(cur?"folder="+cur.id+"&":"")+(bust?"t="+bust:"")),j=await r.json();
   if(!r.ok){msg.textContent=j.error;return}
   const nat=(a,b)=>a.title.localeCompare(b.title,"pt",{numeric:true,sensitivity:"base"});j.folders.sort(nat);j.videos.sort(nat);msg.textContent=j.folders.length||j.videos.length?"":"Pasta vazia";
   j.folders.forEach(f=>card(f.title,f.cover,"\uD83D\uDCC1",()=>{stack.push(f);load()}));
@@ -22,3 +22,5 @@ document.getElementById("home").onclick=e=>{e.preventDefault();stack=[];load()};
 load();
 
 
+
+document.getElementById("refresh").onclick=()=>{bust=Date.now();load()};

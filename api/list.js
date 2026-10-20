@@ -29,6 +29,7 @@ export default async function handler(req, res) {
     .map(f => ({ id: f.id, title: f.name, cover: img(coverOf(f.name)) }));
   const videos = files.filter(f => f.mimeType.startsWith("video/"))
     .map(f => ({ id: f.id, title: clean(f.name), cover: img(coverOf(f.name)) || f.thumbnailLink || null }));
-  res.setHeader("Cache-Control", "s-maxage=120, stale-while-revalidate=600");
+  res.setHeader("Cache-Control", req.query.t ? "no-store" : "s-maxage=120, stale-while-revalidate=600");
   res.json({ cover: folderCover, folders, videos });
 }
+
