@@ -15,12 +15,18 @@ async function load(){
   crumbs.innerHTML="";stack.forEach((s,i)=>{const a=document.createElement("a");a.textContent="\u203A "+s.title;
     a.onclick=()=>{stack=stack.slice(0,i+1);load()};crumbs.appendChild(a)});
 }
-function play(v){document.getElementById("ptitle").textContent=v.title;
-  frame.src=`https://drive.google.com/file/d/${v.id}/preview`;player.hidden=false}
-document.getElementById("close").onclick=()=>{player.hidden=true;frame.src=""};
+const vid=document.getElementById("vid");let cur=null;
+function play(v){cur=v;document.getElementById("ptitle").textContent=v.title;
+  frame.hidden=true;frame.src="";vid.hidden=false;vid.src="/api/stream?id="+v.id;player.hidden=false;vid.play().catch(()=>{})}
+function stop(){vid.pause();vid.removeAttribute("src");vid.load();frame.src="";player.hidden=true}
+document.getElementById("close").onclick=stop;
+document.getElementById("alt").onclick=()=>{vid.pause();vid.hidden=true;frame.hidden=false;frame.src=`https://drive.google.com/file/d/${cur.id}/preview`};
+vid.onerror=()=>{document.getElementById("alt").click()};
+document.addEventListener("keydown",e=>{if(e.key==="Escape")stop()});
 document.getElementById("home").onclick=e=>{e.preventDefault();stack=[];load()};
 load();
 
 
 
 document.getElementById("refresh").onclick=()=>{bust=Date.now();load()};
+
