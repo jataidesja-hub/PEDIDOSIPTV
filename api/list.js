@@ -21,7 +21,8 @@ export default async function handler(req, res) {
 
   const clean = n => n.replace(/\.[^.]+$/, "");
   const imgs = files.filter(f => f.mimeType.startsWith("image/"));
-  const coverOf = name => imgs.find(i => clean(i.name).toLowerCase() === clean(name).toLowerCase());
+  const norm = n => clean(n).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const coverOf = name => imgs.find(i => norm(i.name) === norm(name));
   const img = f => f && `https://lh3.googleusercontent.com/d/${f.id}=w500`;
   const folderCover = img(imgs.find(i => /^(capa|cover|poster)$/i.test(clean(i.name))));
 
