@@ -9,10 +9,10 @@ async function load(){
   const cur=stack[stack.length-1];
   const r=await fetch("/api/list"+(cur?"?folder="+cur.id:"")),j=await r.json();
   if(!r.ok){msg.textContent=j.error;return}
-  msg.textContent=j.folders.length||j.videos.length?"":"Pasta vazia";
+  const nat=(a,b)=>a.title.localeCompare(b.title,"pt",{numeric:true,sensitivity:"base"});j.folders.sort(nat);j.videos.sort(nat);msg.textContent=j.folders.length||j.videos.length?"":"Pasta vazia";
   j.folders.forEach(f=>card(f.title,f.cover,"\uD83D\uDCC1",()=>{stack.push(f);load()}));
   j.videos.forEach(v=>card(v.title,v.cover,"\uD83C\uDFAC",()=>play(v)));
-  crumbs.innerHTML="";stack.forEach((s,i)=>{const a=document.createElement("a");a.textContent="? "+s.title;
+  crumbs.innerHTML="";stack.forEach((s,i)=>{const a=document.createElement("a");a.textContent="\u203A "+s.title;
     a.onclick=()=>{stack=stack.slice(0,i+1);load()};crumbs.appendChild(a)});
 }
 function play(v){document.getElementById("ptitle").textContent=v.title;
@@ -20,4 +20,5 @@ function play(v){document.getElementById("ptitle").textContent=v.title;
 document.getElementById("close").onclick=()=>{player.hidden=true;frame.src=""};
 document.getElementById("home").onclick=e=>{e.preventDefault();stack=[];load()};
 load();
+
 
