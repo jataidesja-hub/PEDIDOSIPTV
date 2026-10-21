@@ -56,6 +56,7 @@ export default async function handler(req, res) {
   };
 
   const SUB_ALIASES = {
+    todas: "__ALL__", todos: "__ALL__",
     "em alta": "Em Alta", emalta: "Em Alta", destaque: "Em Alta", destaques: "Em Alta", top: "Em Alta",
     acao: "Ação", aventura: "Aventura", comedia: "Comédia", drama: "Drama",
     terror: "Terror", suspense: "Suspense", romance: "Romance",
@@ -155,13 +156,14 @@ export default async function handler(req, res) {
     await Promise.all(subCatFolders.map(async sf => {
       try {
         const children = await listByQuery(`'${sf.id}' in parents and trashed=false`);
+        const pSub = sf.subCat === "__ALL__" ? "" : sf.subCat;
         for (const f of children) {
           if (f.mimeType.startsWith("image/")) {
             level2Imgs.push(f);
           } else if (f.mimeType.startsWith("video/")) {
-            level2Videos.push({ ...f, parentCat: sf.mainCat, parentSub: sf.subCat });
+            level2Videos.push({ ...f, parentCat: sf.mainCat, parentSub: pSub });
           } else if (f.mimeType === "application/vnd.google-apps.folder") {
-            level2Shows.push({ ...f, parentCat: sf.mainCat, parentSub: sf.subCat });
+            level2Shows.push({ ...f, parentCat: sf.mainCat, parentSub: pSub });
           }
         }
       } catch {}
