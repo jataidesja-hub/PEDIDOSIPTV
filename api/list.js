@@ -4,13 +4,13 @@ export default async function handler(req, res) {
   if (!key || !folder) return res.status(500).json({ error: "Configure GDRIVE_API_KEY e GDRIVE_ROOT_FOLDER_ID" });
   if (!/^[\w-]+$/.test(folder)) return res.status(400).json({ error: "folder invalido" });
 
-  async function listByQuery(q) {
+  async function listByQuery(q, maxItems = 0) {
     let out = [], token = "";
     do {
       const u = new URL("https://www.googleapis.com/drive/v3/files");
       u.searchParams.set("q", q);
       u.searchParams.set("fields", "nextPageToken,files(id,name,mimeType,thumbnailLink,parents)");
-      u.searchParams.set("pageSize", "1000");
+      u.searchParams.set("pageSize", maxItems > 0 ? String(maxItems) : "1000");
       u.searchParams.set("orderBy", "name_natural");
       u.searchParams.set("key", key);
       if (token) u.searchParams.set("pageToken", token);
@@ -18,6 +18,7 @@ export default async function handler(req, res) {
       const j = await r.json();
       if (!r.ok) throw new Error(j.error?.message || "erro drive");
       out = out.concat(j.files || []);
+      if (maxItems > 0 && out.length >= maxItems) break;
       token = j.nextPageToken || "";
     } while (token);
     return out;
@@ -27,6 +28,24 @@ export default async function handler(req, res) {
   const stripTags = n => clean(n).replace(/^(?:\[[^\]]+\]\s*)+/, "");
   const norm = n => stripTags(n).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
   const img = f => f && `https://lh3.googleusercontent.com/d/${f.id}=w500`;
+
+  async function fetchInnerCovers(folderList) {
+    const map = {};
+    const batchSize = 10;
+    for (let i = 0; i < folderList.length; i += batchSize) {
+      const batch = folderList.slice(i, i + batchSize);
+      await Promise.all(batch.map(async f => {
+        try {
+          const list = await listByQuery(`'${f.id}' in parents and mimeType contains 'image/' and trashed=false`, 10);
+          const chosen = list.find(im => /^(capa|cover|poster)$/i.test(clean(im.name)))
+            || list.find(im => norm(im.name) === norm(f.name))
+            || list[0];
+          if (chosen) map[f.id] = img(chosen);
+        } catch {}
+      }));
+    }
+    return map;
+  }
 
   const CAT_ALIASES = {
     filmes: "Filmes", filme: "Filmes",
@@ -68,27 +87,8 @@ export default async function handler(req, res) {
     const folderCover = img(imgs.find(i => /^(capa|cover|poster)$/i.test(clean(i.name))) || (imgs.length === 1 ? imgs[0] : null));
     const subFolders = files.filter(f => f.mimeType === "application/vnd.google-apps.folder");
 
-    const innerCoverByFolder = {};
     const missingFolders = subFolders.filter(f => !coverOf(f.name));
-    if (missingFolders.length > 0) {
-      try {
-        for (let i = 0; i < missingFolders.length; i += 25) {
-          const ch = missingFolders.slice(i, i + 25);
-          const parentsOr = ch.map(f => `'${f.id}' in parents`).join(" or ");
-          const subImgs = await listByQuery(`(${parentsOr}) and mimeType contains 'image/' and trashed=false`);
-          const byParent = {};
-          for (const si of subImgs) {
-            const pid = si.parents && si.parents[0];
-            if (pid) (byParent[pid] = byParent[pid] || []).push(si);
-          }
-          for (const f of ch) {
-            const list = byParent[f.id] || [];
-            const chosen = list.find(i => /^(capa|cover|poster)$/i.test(clean(i.name))) || list.find(i => norm(i.name) === norm(f.name)) || list[0];
-            if (chosen) innerCoverByFolder[f.id] = img(chosen);
-          }
-        }
-      } catch {}
-    }
+    const innerCoverByFolder = missingFolders.length > 0 ? await fetchInnerCovers(missingFolders) : {};
 
     const folders = subFolders.map(f => ({
       id: f.id,
@@ -121,58 +121,51 @@ export default async function handler(req, res) {
     else directFolders.push(rf);
   }
 
-  let level1Files = [];
-  if (catFolders.length > 0) {
-    try {
-      const parentsOr = catFolders.map(f => `'${f.id}' in parents`).join(" or ");
-      level1Files = await listByQuery(`(${parentsOr}) and trashed=false`);
-    } catch {}
-  }
-
-  const catById = {};
-  for (const cf of catFolders) catById[cf.id] = cf.mainCat;
-
-  // Verifica se dentro das pastas de Categoria ha pastas de Subcategoria (ex: Filmes -> Acao)
+  // Consulta cada pasta de categoria individualmente em paralelo (Google Drive API key exige 1 parent por query)
   const subCatFolders = [];
   const level1Shows = [];
   const level1Imgs = [];
   const level1Videos = [];
 
-  for (const f of level1Files) {
-    const pid = f.parents && f.parents[0];
-    const parentCat = catById[pid] || "";
-    if (f.mimeType.startsWith("image/")) {
-      level1Imgs.push(f);
-    } else if (f.mimeType.startsWith("video/")) {
-      level1Videos.push({ ...f, parentCat, parentSub: "" });
-    } else if (f.mimeType === "application/vnd.google-apps.folder") {
-      const sc = resolveSubCat(f.name);
-      if (sc) subCatFolders.push({ ...f, mainCat: parentCat, subCat: sc });
-      else level1Shows.push({ ...f, parentCat, parentSub: "" });
-    }
+  if (catFolders.length > 0) {
+    await Promise.all(catFolders.map(async cf => {
+      try {
+        const children = await listByQuery(`'${cf.id}' in parents and trashed=false`);
+        const parentCat = cf.mainCat;
+        for (const f of children) {
+          if (f.mimeType.startsWith("image/")) {
+            level1Imgs.push(f);
+          } else if (f.mimeType.startsWith("video/")) {
+            level1Videos.push({ ...f, parentCat, parentSub: "" });
+          } else if (f.mimeType === "application/vnd.google-apps.folder") {
+            const sc = resolveSubCat(f.name);
+            if (sc) subCatFolders.push({ ...f, mainCat: parentCat, subCat: sc });
+            else level1Shows.push({ ...f, parentCat, parentSub: "" });
+          }
+        }
+      } catch {}
+    }));
   }
-
-  let level2Files = [];
-  if (subCatFolders.length > 0) {
-    try {
-      const parentsOr = subCatFolders.map(f => `'${f.id}' in parents`).join(" or ");
-      level2Files = await listByQuery(`(${parentsOr}) and trashed=false`);
-    } catch {}
-  }
-
-  const subCatById = {};
-  for (const sf of subCatFolders) subCatById[sf.id] = sf;
 
   const level2Shows = [];
   const level2Imgs = [];
   const level2Videos = [];
-  for (const f of level2Files) {
-    const pid = f.parents && f.parents[0];
-    const pInfo = subCatById[pid];
-    if (!pInfo) continue;
-    if (f.mimeType.startsWith("image/")) level2Imgs.push(f);
-    else if (f.mimeType.startsWith("video/")) level2Videos.push({ ...f, parentCat: pInfo.mainCat, parentSub: pInfo.subCat });
-    else if (f.mimeType === "application/vnd.google-apps.folder") level2Shows.push({ ...f, parentCat: pInfo.mainCat, parentSub: pInfo.subCat });
+
+  if (subCatFolders.length > 0) {
+    await Promise.all(subCatFolders.map(async sf => {
+      try {
+        const children = await listByQuery(`'${sf.id}' in parents and trashed=false`);
+        for (const f of children) {
+          if (f.mimeType.startsWith("image/")) {
+            level2Imgs.push(f);
+          } else if (f.mimeType.startsWith("video/")) {
+            level2Videos.push({ ...f, parentCat: sf.mainCat, parentSub: sf.subCat });
+          } else if (f.mimeType === "application/vnd.google-apps.folder") {
+            level2Shows.push({ ...f, parentCat: sf.mainCat, parentSub: sf.subCat });
+          }
+        }
+      } catch {}
+    }));
   }
 
   const allImgs = [...rootImgs, ...level1Imgs, ...level2Imgs];
@@ -185,27 +178,8 @@ export default async function handler(req, res) {
   ];
 
   // Busca capas internas das pastas de novelas/series/filmes
-  const innerCoverByFolder = {};
   const missing = allShowFolders.filter(f => !findCoverByName(f.name));
-  if (missing.length > 0) {
-    try {
-      for (let i = 0; i < missing.length; i += 25) {
-        const ch = missing.slice(i, i + 25);
-        const parentsOr = ch.map(f => `'${f.id}' in parents`).join(" or ");
-        const subImgs = await listByQuery(`(${parentsOr}) and mimeType contains 'image/' and trashed=false`);
-        const byParent = {};
-        for (const si of subImgs) {
-          const pid = si.parents && si.parents[0];
-          if (pid) (byParent[pid] = byParent[pid] || []).push(si);
-        }
-        for (const f of ch) {
-          const list = byParent[f.id] || [];
-          const chosen = list.find(i => /^(capa|cover|poster)$/i.test(clean(i.name))) || list.find(i => norm(i.name) === norm(f.name)) || list[0];
-          if (chosen) innerCoverByFolder[f.id] = img(chosen);
-        }
-      }
-    } catch {}
-  }
+  const innerCoverByFolder = missing.length > 0 ? await fetchInnerCovers(missing) : {};
 
   function extractTags(rawName, fallbackCat, fallbackSub) {
     let cat = fallbackCat || "";
