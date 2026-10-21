@@ -37,15 +37,13 @@ export default async function handler(req, res) {
   };
 
   const SUB_ALIASES = {
+    "em alta": "Em Alta", emalta: "Em Alta", destaque: "Em Alta", destaques: "Em Alta", top: "Em Alta",
     acao: "Ação", aventura: "Aventura", comedia: "Comédia", drama: "Drama",
     terror: "Terror", suspense: "Suspense", romance: "Romance",
     ficcao: "Ficção Científica", "ficcao cientifica": "Ficção Científica", scifi: "Ficção Científica",
     animacao: "Animação", infantil: "Animação", documentario: "Documentário", documentarios: "Documentário",
     policial: "Policial", crime: "Policial", nacional: "Nacionais", nacionais: "Nacionais",
-    dorama: "Doramas", doramas: "Doramas",
-    shonen: "Shonen", shounen: "Shonen", isekai: "Isekai", seinen: "Seinen",
-    fantasia: "Fantasia", esportes: "Esportes", esporte: "Esportes",
-    dublado: "Dublados", dublados: "Dublados", legendado: "Legendados", legendados: "Legendados"
+    dorama: "Doramas", doramas: "Doramas"
   };
 
   function resolveMainCat(raw) {
@@ -211,7 +209,7 @@ export default async function handler(req, res) {
 
   function extractTags(rawName, fallbackCat, fallbackSub) {
     let cat = fallbackCat || "";
-    let sub = fallbackSub || "";
+    let subs = fallbackSub ? [fallbackSub] : [];
     const brackets = [...rawName.matchAll(/\[([^\]]+)\]/g)].map(m => m[1].trim());
     for (const b of brackets) {
       const parts = b.split(/[/|>,-]/).map(s => s.trim()).filter(Boolean);
@@ -219,12 +217,12 @@ export default async function handler(req, res) {
         const mc = resolveMainCat(p);
         const sc = resolveSubCat(p);
         if (mc) cat = mc;
-        else if (sc) sub = sc;
+        else if (sc) { if (!subs.includes(sc)) subs.push(sc); }
         else if (!cat) cat = p;
-        else if (!sub) sub = p;
+        else if (!subs.includes(p)) subs.push(p);
       }
     }
-    return { cat, sub, cleanTitle: stripTags(rawName) };
+    return { cat, sub: subs.join(", "), subs, cleanTitle: stripTags(rawName) };
   }
 
   const outFolders = allShowFolders.map(f => {
@@ -234,6 +232,7 @@ export default async function handler(req, res) {
       title: info.cleanTitle,
       cat: info.cat,
       sub: info.sub,
+      subs: info.subs,
       cover: img(findCoverByName(f.name)) || innerCoverByFolder[f.id] || null
     };
   });
@@ -251,6 +250,7 @@ export default async function handler(req, res) {
       title: info.cleanTitle,
       cat: info.cat,
       sub: info.sub,
+      subs: info.subs,
       cover: img(findCoverByName(v.name)) || v.thumbnailLink || null
     };
   });

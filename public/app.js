@@ -14,9 +14,8 @@ const MAIN_CATS=[
 ];
 
 const SUBCATS_BY_MAIN={
-  "Filmes":["A\u00e7\u00e3o","Aventura","Com\u00e9dia","Drama","Terror","Suspense","Romance","Fic\u00e7\u00e3o Cient\u00edfica","Anima\u00e7\u00e3o","Document\u00e1rio","Nacionais"],
-  "S\u00e9ries":["A\u00e7\u00e3o","Com\u00e9dia","Drama","Suspense","Policial","Fic\u00e7\u00e3o Cient\u00edfica","Romance","Terror","Doramas","Document\u00e1rio"],
-  "Animes":["Shonen","A\u00e7\u00e3o","Aventura","Fantasia","Isekai","Com\u00e9dia","Romance","Seinen","Esportes","Dublados","Legendados"]
+  "Filmes":["\uD83D\uDD25 Em Alta","A\u00e7\u00e3o","Aventura","Com\u00e9dia","Drama","Terror","Suspense","Romance","Fic\u00e7\u00e3o Cient\u00edfica","Anima\u00e7\u00e3o","Document\u00e1rio","Nacionais"],
+  "S\u00e9ries":["\uD83D\uDD25 Em Alta","A\u00e7\u00e3o","Com\u00e9dia","Drama","Suspense","Policial","Fic\u00e7\u00e3o Cient\u00edfica","Romance","Terror","Doramas","Document\u00e1rio"]
 };
 
 let stack=[],bust="",cur=null,currentUser=null,vplayer=null;
@@ -176,10 +175,11 @@ function buildBars(){
       subcatBar.appendChild(allBtn);
 
       subs.forEach(s=>{
+        const val=s.replace(/^[^\wA-Za-z\u00C0-\u017F]+\s*/,"");
         const btn=document.createElement("button");
-        btn.className="subcat-pill"+(activeSub===s?" active":"");
+        btn.className="subcat-pill"+(activeSub===val?" active":"");
         btn.textContent=s;
-        btn.onclick=()=>{activeSub=s;buildBars();render()};
+        btn.onclick=()=>{activeSub=val;buildBars();render()};
         subcatBar.appendChild(btn);
       });
     }else{
@@ -211,7 +211,9 @@ function matchCatAndSub(item){
     if(normStr(item.cat)!==normStr(activeCat))return false;
   }
   if(activeSub!=="ALL"){
-    if(normStr(item.sub)!==normStr(activeSub))return false;
+    const target=normStr(activeSub);
+    const list=Array.isArray(item.subs)?item.subs:(item.sub?[item.sub]:[]);
+    if(!list.some(s=>normStr(s)===target))return false;
   }
   return true;
 }
