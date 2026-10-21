@@ -1,9 +1,37 @@
 <!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PEDIDOS IPTV</title><link rel="stylesheet" href="style.css"></head><body>
-<header><a href="#" id="home">&#9654; PEDIDOS IPTV</a><nav id="crumbs"></nav><button id="refresh" title="Atualizar">&#8635; Atualizar</button></header>
-<main><div id="grid" class="grid"></div><div id="msg"></div></main>
-<div id="player" hidden><button id="close">&#10005;</button><h2 id="ptitle"></h2><video id="vid" controls autoplay playsinline preload="auto"></video><iframe id="frame" hidden allow="autoplay; fullscreen" allowfullscreen></iframe><button id="alt">Player alternativo (Drive)</button></div>
+<div id="login-screen">
+  <form id="login-form">
+    <h1>&#9654; PEDIDOS IPTV</h1>
+    <p class="sub">Entre com seu usuário e senha</p>
+    <input id="l-user" type="text" placeholder="Usuário" autocomplete="username" required>
+    <input id="l-pass" type="password" placeholder="Senha" autocomplete="current-password" required>
+    <button id="l-btn" type="submit">Entrar</button>
+    <div id="l-err"></div>
+  </form>
+</div>
+<div id="app" hidden>
+  <header>
+    <a href="#" id="home">&#9654; PEDIDOS IPTV</a>
+    <nav id="crumbs"></nav>
+    <div class="header-right">
+      <span id="uinfo"></span>
+      <button id="refresh" title="Atualizar">&#8635; Atualizar</button>
+      <button id="logout" title="Sair">Sair</button>
+    </div>
+  </header>
+  <main><div id="grid" class="grid"></div><div id="msg"></div></main>
+</div>
+<div id="player" hidden>
+  <div class="pbar">
+    <h2 id="ptitle"></h2>
+    <div class="pactions">
+      <button id="toggle-watched"></button>
+      <button id="close">&#10005;</button>
+    </div>
+  </div>
+  <video id="vid" controls autoplay playsinline preload="auto"></video>
+  <iframe id="frame" hidden allow="autoplay; fullscreen" allowfullscreen></iframe>
+  <button id="alt">Player alternativo (Drive)</button>
+</div>
 <script src="app.js"></script></body></html>
-
-
-
