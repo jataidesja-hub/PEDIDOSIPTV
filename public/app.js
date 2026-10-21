@@ -1,11 +1,30 @@
 const grid=document.getElementById("grid"),msg=document.getElementById("msg"),crumbs=document.getElementById("crumbs");
 const player=document.getElementById("player"),frame=document.getElementById("frame"),vjsWrap=document.getElementById("vjs-wrap");
 const loginScreen=document.getElementById("login-screen"),appEl=document.getElementById("app"),uinfo=document.getElementById("uinfo");
-const toggleWatchedBtn=document.getElementById("toggle-watched"),catBar=document.getElementById("cat-bar"),searchInput=document.getElementById("search");
+const toggleWatchedBtn=document.getElementById("toggle-watched"),catBar=document.getElementById("cat-bar"),subcatBar=document.getElementById("subcat-bar"),searchInput=document.getElementById("search");
 const prevBtn=document.getElementById("prev-ep"),nextBtn=document.getElementById("next-ep");
 
+const MAIN_CATS=[
+  {id:"ALL",label:"\uD83C\uDFE0 Todos"},
+  {id:"Filmes",label:"\uD83C\uDFAC Filmes"},
+  {id:"S\u00e9ries",label:"\uD83D\uDCFA S\u00e9ries"},
+  {id:"Novelas",label:"\uD83C\uDFAD Novelas"},
+  {id:"Novelinhas",label:"\uD83D\uDCF1 Novelinhas"},
+  {id:"Animes",label:"\u26A1 Animes"}
+];
+
+const SUBCATS_BY_MAIN={
+  "Filmes":["A\u00e7\u00e3o","Aventura","Com\u00e9dia","Drama","Terror","Suspense","Romance","Fic\u00e7\u00e3o Cient\u00edfica","Anima\u00e7\u00e3o","Document\u00e1rio","Nacionais"],
+  "S\u00e9ries":["A\u00e7\u00e3o","Com\u00e9dia","Drama","Suspense","Policial","Fic\u00e7\u00e3o Cient\u00edfica","Romance","Terror","Doramas","Document\u00e1rio"],
+  "Animes":["Shonen","A\u00e7\u00e3o","Aventura","Fantasia","Isekai","Com\u00e9dia","Romance","Seinen","Esportes","Dublados","Legendados"]
+};
+
 let stack=[],bust="",cur=null,currentUser=null,vplayer=null;
-let lastData={folders:[],videos:[]},activeCat="ALL",searchTerm="";
+let lastData={folders:[],videos:[]},activeCat="ALL",activeSub="ALL",searchTerm="";
+
+function normStr(s){
+  return String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLowerCase();
+}
 
 function uPrefix(){return currentUser?currentUser.usuario:"guest"}
 function wKey(){return "iptv_watched_"+uPrefix()}
@@ -25,17 +44,6 @@ function saveProg(id,time,dur){
   if(time/dur>0.95)delete m[id];
   else if(time>5)m[id]={t:Math.floor(time),d:Math.floor(dur)};
   localStorage.setItem(pKey(),JSON.stringify(m));
-}
-
-// Extrai categoria do prefixo: "[Novelas] Rebelde" ou "Novelas - Rebelde"
-function parseCategory(rawTitle){
-  const m1=/^\[([^\]]+)\]\s*(.+)$/.exec(rawTitle);
-  if(m1)return {cat:m1[1].trim(),cleanTitle:m1[2].trim()};
-  const m2=/^([^-\u2013\u2014]{2,22})\s+[-\u2013\u2014]\s+(.+)$/.exec(rawTitle);
-  if(m2&&!/^(cap[i\u00ed]tulo|ep|epis[o\u00f3]dio|parte|temp|temporada)\b/i.test(m2[1].trim())){
-    return {cat:m2[1].trim(),cleanTitle:m2[2].trim()};
-  }
-  return {cat:"",cleanTitle:rawTitle};
 }
 
 function initVjs(){
@@ -113,14 +121,15 @@ const card=(item,icon,fn,isVideo)=>{
   }
 
   d.appendChild(imgDiv);
-  if(item.cat){
+  const tagText=[item.cat,item.sub].filter(Boolean).join(" \u2022 ");
+  if(tagText){
     const ct=document.createElement("span");
     ct.className="cat-tag";
-    ct.textContent=item.cat;
+    ct.textContent=tagText;
     d.appendChild(ct);
   }
   const pEl=document.createElement("p");
-  pEl.textContent=item.cleanTitle||item.title;
+  pEl.textContent=item.title;
   d.appendChild(pEl);
   d.onclick=fn;
   grid.appendChild(d);
@@ -142,72 +151,110 @@ function updatePlayerWatchedBtn(){
   toggleWatchedBtn.textContent=w?"\u2713 Visto (desmarcar)":"Marcar como visto";
 }
 
-function buildCatBar(){
-  const cats=new Set();
-  lastData.folders.forEach(f=>{if(f.cat)cats.add(f.cat)});
-  lastData.videos.forEach(v=>{if(v.cat)cats.add(v.cat)});
-  const hasVideos=lastData.videos.length>0;
-  const hasWatchedOrProg=lastData.videos.some(v=>isWatched(v.id)||getProg(v.id));
+function buildBars(){
+  catBar.innerHTML="";
+  subcatBar.innerHTML="";
+  const inRoot=stack.length===0;
 
-  if(cats.size===0&&!hasVideos){
-    catBar.hidden=true;catBar.innerHTML="";return;
+  if(inRoot){
+    catBar.hidden=false;
+    MAIN_CATS.forEach(c=>{
+      const btn=document.createElement("button");
+      btn.className="cat-pill"+(activeCat===c.id?" active":"");
+      btn.textContent=c.label;
+      btn.onclick=()=>{activeCat=c.id;activeSub="ALL";buildBars();render()};
+      catBar.appendChild(btn);
+    });
+
+    const subs=SUBCATS_BY_MAIN[activeCat];
+    if(subs&&subs.length){
+      subcatBar.hidden=false;
+      const allBtn=document.createElement("button");
+      allBtn.className="subcat-pill"+(activeSub==="ALL"?" active":"");
+      allBtn.textContent="Todas";
+      allBtn.onclick=()=>{activeSub="ALL";buildBars();render()};
+      subcatBar.appendChild(allBtn);
+
+      subs.forEach(s=>{
+        const btn=document.createElement("button");
+        btn.className="subcat-pill"+(activeSub===s?" active":"");
+        btn.textContent=s;
+        btn.onclick=()=>{activeSub=s;buildBars();render()};
+        subcatBar.appendChild(btn);
+      });
+    }else{
+      subcatBar.hidden=true;
+    }
+  }else{
+    subcatBar.hidden=true;
+    const hasVideos=lastData.videos.length>0;
+    if(!hasVideos){catBar.hidden=true;return}
+    catBar.hidden=false;
+    const pills=[
+      {id:"ALL",label:"Todos os cap\u00edtulos"},
+      {id:"__UNWATCHED__",label:"N\u00e3o vistos"},
+      {id:"__CONTINUE__",label:"Continuar assistindo"}
+    ];
+    if(!pills.some(p=>p.id===activeCat))activeCat="ALL";
+    pills.forEach(p=>{
+      const btn=document.createElement("button");
+      btn.className="cat-pill"+(activeCat===p.id?" active":"");
+      btn.textContent=p.label;
+      btn.onclick=()=>{activeCat=p.id;buildBars();render()};
+      catBar.appendChild(btn);
+    });
   }
-  catBar.hidden=false;catBar.innerHTML="";
-  const pills=[{id:"ALL",label:"Todos"}];
-  if(hasVideos){
-    pills.push({id:"__UNWATCHED__",label:"N\u00e3o vistos"});
-    if(hasWatchedOrProg)pills.push({id:"__CONTINUE__",label:"Continuar assistindo"});
+}
+
+function matchCatAndSub(item){
+  if(activeCat!=="ALL"&&activeCat!=="__UNWATCHED__"&&activeCat!=="__CONTINUE__"){
+    if(normStr(item.cat)!==normStr(activeCat))return false;
   }
-  Array.from(cats).sort((a,b)=>a.localeCompare(b,"pt")).forEach(c=>pills.push({id:c,label:c}));
-
-  if(!pills.some(p=>p.id===activeCat))activeCat="ALL";
-
-  pills.forEach(p=>{
-    const btn=document.createElement("button");
-    btn.className="cat-pill"+(activeCat===p.id?" active":"");
-    btn.textContent=p.label;
-    btn.onclick=()=>{activeCat=p.id;buildCatBar();render()};
-    catBar.appendChild(btn);
-  });
+  if(activeSub!=="ALL"){
+    if(normStr(item.sub)!==normStr(activeSub))return false;
+  }
+  return true;
 }
 
 function render(){
   grid.innerHTML="";
-  const q=searchTerm.trim().toLowerCase();
-  const matchSearch=it=>!q||it.title.toLowerCase().includes(q)||(it.cat&&it.cat.toLowerCase().includes(q));
-  const matchCatFolder=f=>{
-    if(activeCat==="ALL")return true;
-    if(activeCat==="__UNWATCHED__"||activeCat==="__CONTINUE__")return false;
-    return f.cat===activeCat;
-  };
-  const matchCatVideo=v=>{
-    if(activeCat==="ALL")return true;
-    if(activeCat==="__UNWATCHED__")return !isWatched(v.id);
-    if(activeCat==="__CONTINUE__")return !!getProg(v.id);
-    return v.cat===activeCat;
-  };
+  const q=normStr(searchTerm);
+  const matchSearch=it=>!q||normStr(it.title).includes(q)||normStr(it.cat).includes(q)||normStr(it.sub).includes(q);
+  const inRoot=stack.length===0;
 
-  const folders=lastData.folders.filter(f=>matchSearch(f)&&matchCatFolder(f));
-  const videos=lastData.videos.filter(v=>matchSearch(v)&&matchCatVideo(v));
+  let folders=[],videos=[];
+  if(inRoot){
+    folders=lastData.folders.filter(f=>matchSearch(f)&&matchCatAndSub(f));
+    videos=lastData.videos.filter(v=>matchSearch(v)&&matchCatAndSub(v));
+  }else{
+    folders=lastData.folders.filter(f=>matchSearch(f));
+    videos=lastData.videos.filter(v=>{
+      if(!matchSearch(v))return false;
+      if(activeCat==="__UNWATCHED__")return !isWatched(v.id);
+      if(activeCat==="__CONTINUE__")return !!getProg(v.id);
+      return true;
+    });
+  }
 
-  msg.textContent=folders.length||videos.length?"":"Nenhum item encontrado";
-  folders.forEach(f=>card(f,"\uD83D\uDCC1",()=>{stack.push(f);activeCat="ALL";searchInput.value="";searchTerm="";load()},false));
+  msg.textContent=folders.length||videos.length?"":"Nenhum título encontrado nesta categoria";
+  folders.forEach(f=>card(f,"\uD83D\uDCC1",()=>{stack.push(f);activeCat="ALL";activeSub="ALL";searchInput.value="";searchTerm="";load()},false));
   videos.forEach(v=>card(v,"\uD83C\uDFAC",()=>play(v),true));
 }
 
 async function load(){
-  grid.innerHTML="";msg.textContent="Carregando...";catBar.hidden=true;
+  grid.innerHTML="";msg.textContent="Carregando...";
   const curFolder=stack[stack.length-1];
-  const r=await fetch("/api/list?"+(curFolder?"folder="+curFolder.id+"&":"")+(bust?"t="+bust:"")),j=await r.json();
+  const url="/api/list?"+(curFolder?"folder="+curFolder.id+"&":"mode=catalog&")+(bust?"t="+bust:"");
+  const r=await fetch(url),j=await r.json();
   if(!r.ok){msg.textContent=j.error;return}
   const nat=(a,b)=>a.title.localeCompare(b.title,"pt",{numeric:true,sensitivity:"base"});
-  const folders=(j.folders||[]).map(f=>({...f,...parseCategory(f.title)})).sort(nat);
-  const videos=(j.videos||[]).map(v=>({...v,...parseCategory(v.title)})).sort(nat);
+  const folders=(j.folders||[]).sort(nat);
+  const videos=(j.videos||[]).sort(nat);
   lastData={folders,videos};
-  buildCatBar();
+  buildBars();
   render();
-  crumbs.innerHTML="";stack.forEach((s,i)=>{const a=document.createElement("a");a.textContent="\u203A "+(s.cleanTitle||s.title);
-    a.onclick=()=>{stack=stack.slice(0,i+1);activeCat="ALL";load()};crumbs.appendChild(a)});
+  crumbs.innerHTML="";stack.forEach((s,i)=>{const a=document.createElement("a");a.textContent="\u203A "+s.title;
+    a.onclick=()=>{stack=stack.slice(0,i+1);activeCat="ALL";activeSub="ALL";load()};crumbs.appendChild(a)});
 }
 
 function getAdjacentVideo(dir){
@@ -233,7 +280,7 @@ function switchToAlt(){
 
 function play(v){
   cur=v;
-  document.getElementById("ptitle").textContent=v.cleanTitle||v.title;
+  document.getElementById("ptitle").textContent=v.title;
   updatePlayerWatchedBtn();
   updateNavBtns();
   frame.hidden=true;frame.src="";
@@ -252,7 +299,7 @@ function stop(){
   }
   frame.src="";
   player.hidden=true;
-  buildCatBar();
+  buildBars();
   render();
 }
 
@@ -279,7 +326,7 @@ document.addEventListener("keydown",e=>{
 });
 
 searchInput.oninput=e=>{searchTerm=e.target.value;render()};
-document.getElementById("home").onclick=e=>{e.preventDefault();stack=[];activeCat="ALL";searchInput.value="";searchTerm="";load()};
+document.getElementById("home").onclick=e=>{e.preventDefault();stack=[];activeCat="ALL";activeSub="ALL";searchInput.value="";searchTerm="";load()};
 document.getElementById("refresh").onclick=()=>{bust=Date.now();load()};
 
 function showApp(u){

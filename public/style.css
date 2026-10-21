@@ -10,11 +10,15 @@ header a{color:#ff4d6d;font-weight:700;text-decoration:none}#crumbs a{color:#aaa
 .u-name{font-size:13px;color:#fff;font-weight:600}
 .u-exp{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#a5a5bc;margin-top:2px}
 .u-dot{width:6px;height:6px;border-radius:50%;background:#1db954;box-shadow:0 0 6px #1db954}
-.cat-bar{display:flex;gap:8px;padding:12px 20px 0;overflow-x:auto;scrollbar-width:thin}
-.cat-bar[hidden]{display:none}
-.cat-pill{background:#1a1a24;border:1px solid #2b2b3b;color:#ccc;padding:7px 14px;border-radius:999px;font-size:13px;cursor:pointer;white-space:nowrap;transition:.15s}
+.cat-bar{display:flex;gap:8px;padding:14px 20px 4px;overflow-x:auto;scrollbar-width:thin}
+.cat-bar[hidden],.subcat-bar[hidden]{display:none}
+.cat-pill{background:#181822;border:1px solid #2b2b3b;color:#ccc;padding:8px 16px;border-radius:999px;font-size:13px;cursor:pointer;white-space:nowrap;transition:.15s;font-weight:500}
 .cat-pill:hover{border-color:#ff4d6d;color:#fff}
-.cat-pill.active{background:#ff4d6d;border-color:#ff4d6d;color:#fff;font-weight:600}
+.cat-pill.active{background:linear-gradient(135deg,#ff4d6d,#c9184a);border-color:#ff4d6d;color:#fff;font-weight:700;box-shadow:0 4px 12px rgba(255,77,109,.3)}
+.subcat-bar{display:flex;gap:6px;padding:8px 20px 2px;overflow-x:auto;scrollbar-width:thin}
+.subcat-pill{background:#13131b;border:1px solid #252534;color:#9b9bb2;padding:5px 12px;border-radius:999px;font-size:12px;cursor:pointer;white-space:nowrap;transition:.15s}
+.subcat-pill:hover{border-color:#ff8fa3;color:#fff}
+.subcat-pill.active{background:#2b2b3d;border-color:#ff8fa3;color:#ff8fa3;font-weight:600}
 main{padding:20px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px}
 .card{position:relative;cursor:pointer;background:#1a1a24;border-radius:10px;overflow:hidden;transition:.15s;display:flex;flex-direction:column}.card:hover{transform:scale(1.04)}
 .card .img{aspect-ratio:2/3;background:#262634 center/cover;display:flex;align-items:center;justify-content:center;font-size:40px;position:relative}
