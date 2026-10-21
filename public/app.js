@@ -708,7 +708,7 @@ function applyReaderTheme(theme){
 }
 
 function applyComfort(bright,warmth,font){
-  rCanvasWrap.style.filter=`brightness(${bright}%)`;
+  document.getElementById("rstage").style.filter=`brightness(${bright}%)`;
   rAmber.style.background=`rgba(255,140,0,${(warmth/100)*0.45})`;
   if(font)rReflow.style.fontFamily=font;
   document.getElementById("r-bright-val").textContent=bright+"%";
@@ -743,24 +743,75 @@ function updateBookWatchedUI(){
   rWatchedBtn.textContent=w?"\u2713 Lido":"\u2713 Marcar lido";
 }
 
+function getContentBounds(ctx,w,h){
+  try{
+    const data=ctx.getImageData(0,0,w,h).data;
+    const bgR=data[0],bgG=data[1],bgB=data[2];
+    const tol=26;
+    let minX=w,minY=h,maxX=0,maxY=0,found=false;
+    const step=3;
+    for(let y=0;y<h;y+=step){
+      const row=y*w*4;
+      for(let x=0;x<w;x+=step){
+        const i=row+x*4;
+        if(data[i+3]>20&&(Math.abs(data[i]-bgR)>tol||Math.abs(data[i+1]-bgG)>tol||Math.abs(data[i+2]-bgB)>tol)){
+          if(x<minX)minX=x;
+          if(x>maxX)maxX=x;
+          if(y<minY)minY=y;
+          if(y>maxY)maxY=y;
+          found=true;
+        }
+      }
+    }
+    if(!found||(maxX-minX)<w*0.18||(maxY-minY)<h*0.12)return {x:0,y:0,w,h};
+    const padX=Math.round(w*0.02);
+    const padY=Math.round(h*0.016);
+    const x=Math.max(0,minX-padX);
+    const y=Math.max(0,minY-padY);
+    const cw=Math.min(w-x,(maxX-minX)+padX*2);
+    const ch=Math.min(h-y,(maxY-minY)+padY*2);
+    return {x,y,w:cw,h:ch};
+  }catch{
+    return {x:0,y:0,w,h};
+  }
+}
+
 async function renderSingleCanvas(pageNum,canvas){
   const page=await pdfDoc.getPage(pageNum);
-  const unscaled=page.getViewport({scale:1});
-  const isImm=readerEl.classList.contains("immersive");
-  const padW=isImm?16:(window.innerWidth<=720?28:110);
-  const padH=isImm?12:32;
-  const availW=Math.max(240,(rCanvasWrap.clientWidth-padW)/(bookSpread===2?2.05:1));
-  const availH=Math.max(280,rCanvasWrap.clientHeight-padH);
-  const fitScale=Math.min(availW/unscaled.width,availH/unscaled.height);
-  const finalScale=Math.max(0.4,fitScale*bookZoom);
   const dpr=Math.min(window.devicePixelRatio||1,2);
-  const vp=page.getViewport({scale:finalScale*dpr});
-  canvas.width=Math.floor(vp.width);
-  canvas.height=Math.floor(vp.height);
-  canvas.style.width=Math.floor(vp.width/dpr)+"px";
-  canvas.style.height=Math.floor(vp.height/dpr)+"px";
+  const renderVp=page.getViewport({scale:2});
+  const tmp=document.createElement("canvas");
+  tmp.width=Math.floor(renderVp.width);
+  tmp.height=Math.floor(renderVp.height);
+  const tctx=tmp.getContext("2d",{willReadFrequently:true});
+  tctx.fillStyle="#ffffff";
+  tctx.fillRect(0,0,tmp.width,tmp.height);
+  await page.render({canvasContext:tctx,viewport:renderVp}).promise;
+
+  const b=getContentBounds(tctx,tmp.width,tmp.height);
+  const isImm=readerEl.classList.contains("immersive");
+  const isMobile=window.innerWidth<=720;
+  const padW=isImm?8:(isMobile?12:64);
+  const padH=isImm?8:(isMobile?10:24);
+  const availW=Math.max(240,(rCanvasWrap.clientWidth-padW)/(bookSpread===2?2.04:1));
+  const availH=Math.max(280,rCanvasWrap.clientHeight-padH);
+
+  const fitScale=Math.min(availW/b.w,availH/b.h)*bookZoom;
+  let dispW=Math.floor(b.w*fitScale);
+  let dispH=Math.floor(b.h*fitScale);
+
+  if(isMobile&&bookSpread===1&&bookZoom===1&&dispH<availH*0.92&&pageNum>1){
+    dispH=Math.min(Math.floor(availH*0.96),Math.floor(dispH*1.32));
+  }
+
+  canvas.width=Math.floor(dispW*dpr);
+  canvas.height=Math.floor(dispH*dpr);
+  canvas.style.width=dispW+"px";
+  canvas.style.height=dispH+"px";
   const ctx=canvas.getContext("2d");
-  await page.render({canvasContext:ctx,viewport:vp}).promise;
+  ctx.fillStyle="#ffffff";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(tmp,b.x,b.y,b.w,b.h,0,0,canvas.width,canvas.height);
 }
 
 async function renderKindleText(pageNum){
