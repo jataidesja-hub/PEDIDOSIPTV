@@ -1,8 +1,13 @@
 *{box-sizing:border-box}body{margin:0;background:#0b0b10;color:#eee;font-family:system-ui,sans-serif}
 header{display:flex;gap:16px;align-items:center;padding:14px 20px;background:#14141c;position:sticky;top:0;z-index:5;flex-wrap:wrap}
 header a{color:#ff4d6d;font-weight:700;text-decoration:none}#crumbs a{color:#aaa;margin-right:8px;cursor:pointer}
-.header-right{margin-left:auto;display:flex;gap:10px;align-items:center}
-#uinfo{font-size:13px;color:#bbb}
+.header-right{margin-left:auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#uinfo{display:flex;align-items:center;gap:10px;background:#1d1d29;border:1px solid #2e2e40;padding:5px 12px 5px 6px;border-radius:999px}
+.u-avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#ff4d6d,#c9184a);color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;letter-spacing:.5px;flex-shrink:0}
+.u-meta{display:flex;flex-direction:column;line-height:1.15}
+.u-name{font-size:13px;color:#fff;font-weight:600}
+.u-exp{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#a5a5bc;margin-top:2px}
+.u-dot{width:6px;height:6px;border-radius:50%;background:#1db954;box-shadow:0 0 6px #1db954}
 main{padding:20px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px}
 .card{position:relative;cursor:pointer;background:#1a1a24;border-radius:10px;overflow:hidden;transition:.15s}.card:hover{transform:scale(1.04)}
 .card .img{aspect-ratio:2/3;background:#262634 center/cover;display:flex;align-items:center;justify-content:center;font-size:40px}

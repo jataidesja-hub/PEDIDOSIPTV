@@ -97,7 +97,18 @@ function showApp(u){
   currentUser=u;
   loginScreen.hidden=true;
   appEl.hidden=false;
-  uinfo.textContent=`${u.cliente}${u.vencimento?` (Venc: ${u.vencimento})`:""}`;
+  const initials=(u.cliente||"U").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase();
+  uinfo.innerHTML="";
+  const av=document.createElement("span");av.className="u-avatar";av.textContent=initials;
+  const meta=document.createElement("span");meta.className="u-meta";
+  const nm=document.createElement("strong");nm.className="u-name";nm.textContent=u.cliente||u.usuario;
+  meta.appendChild(nm);
+  if(u.vencimento){
+    const vc=document.createElement("span");vc.className="u-exp";
+    vc.innerHTML=`<span class="u-dot"></span>Vence ${u.vencimento}`;
+    meta.appendChild(vc);
+  }
+  uinfo.append(av,meta);
   load();
 }
 
