@@ -117,7 +117,7 @@ const card=(item,icon,fn,mediaType)=>{
     }else if(isBook){
       const bd=document.createElement("span");
       bd.className="book-badge";
-      bd.textContent="\uD83D\uDCD6 PDF";
+      bd.textContent="\uD83D\uDCD6 "+String(item.ext||"PDF").toUpperCase();
       imgDiv.appendChild(bd);
     }
     const doneLbl=isBook?"\u2713 Lido":"\u2713 Visto";
@@ -474,6 +474,190 @@ if(window.pdfjsLib){
 }
 
 let curBook=null,pdfDoc=null,bookPage=1,bookTotal=1,bookMode="page",bookSpread=1,bookZoom=1,kindleFontPx=20,renderToken=0;
+let bookPagesData=[],cbzImages=[],blobUrlsToCleanup=[];
+
+function cleanupBookBlobs(){
+  for(const u of blobUrlsToCleanup){try{URL.revokeObjectURL(u)}catch{}}
+  blobUrlsToCleanup=[];
+  bookPagesData=[];
+  cbzImages=[];
+}
+
+function paginatePlainText(text,charsPerPage=2300){
+  const paras=String(text||"").replace(/\r\n/g,"\n").split(/\n{2,}/);
+  const pages=[];
+  let curP="";
+  for(const p of paras){
+    const trimmed=p.trim();
+    if(!trimmed)continue;
+    if(curP.length+trimmed.length>charsPerPage&&curP.length>300){
+      pages.push({type:"text",content:curP.trim()});
+      curP=trimmed+"\n\n";
+    }else{
+      curP+=trimmed+"\n\n";
+    }
+  }
+  if(curP.trim()||!pages.length)pages.push({type:"text",content:curP.trim()||"(Arquivo vazio)"});
+  return pages;
+}
+
+function resolveZipPath(baseFile,relHref){
+  const cleanRel=String(relHref||"").split("#")[0].split("?")[0];
+  if(!cleanRel)return "";
+  const parts=baseFile.split("/");
+  parts.pop();
+  for(const seg of cleanRel.split("/")){
+    if(!seg||seg===".")continue;
+    if(seg==="..")parts.pop();
+    else parts.push(seg);
+  }
+  return parts.join("/");
+}
+
+async function parseEpubBuffer(buf){
+  const zip=await window.JSZip.loadAsync(buf);
+  const parser=new DOMParser();
+  const containerXml=await zip.file("META-INF/container.xml")?.async("string");
+  if(!containerXml)throw new Error("EPUB invalido");
+  const cDoc=parser.parseFromString(containerXml,"application/xml");
+  const rootfile=cDoc.querySelector("rootfile")?.getAttribute("full-path");
+  if(!rootfile)throw new Error("OPF nao encontrado");
+
+  const opfXml=await zip.file(rootfile)?.async("string");
+  if(!opfXml)throw new Error("OPF ausente");
+  const opfDoc=parser.parseFromString(opfXml,"application/xml");
+
+  const manifest={};
+  opfDoc.querySelectorAll("manifest > item").forEach(it=>{
+    const id=it.getAttribute("id"),href=it.getAttribute("href"),mt=it.getAttribute("media-type")||"";
+    if(id&&href)manifest[id]={href:resolveZipPath(rootfile,decodeURIComponent(href)),mt};
+  });
+
+  const blobByPath={};
+  for(const k of Object.keys(manifest)){
+    const item=manifest[k];
+    if(item.mt.startsWith("image/")){
+      const zf=zip.file(item.href);
+      if(zf){
+        const b=await zf.async("blob");
+        const u=URL.createObjectURL(new Blob([b],{type:item.mt}));
+        blobUrlsToCleanup.push(u);
+        blobByPath[item.href]=u;
+      }
+    }
+  }
+
+  const spineIds=[];
+  opfDoc.querySelectorAll("spine > itemref").forEach(ir=>{
+    const idref=ir.getAttribute("idref");
+    if(idref&&manifest[idref])spineIds.push(idref);
+  });
+
+  const sections=[];
+  for(const idref of spineIds){
+    const item=manifest[idref];
+    const zf=zip.file(item.href);
+    if(!zf)continue;
+    const rawHtml=await zf.async("string");
+    const hDoc=parser.parseFromString(rawHtml,"text/html");
+    hDoc.querySelectorAll("script,style,link,meta").forEach(el=>el.remove());
+    hDoc.querySelectorAll("img,image").forEach(im=>{
+      const src=im.getAttribute("src")||im.getAttribute("xlink:href")||im.getAttribute("href");
+      if(src){
+        const full=resolveZipPath(item.href,decodeURIComponent(src));
+        if(blobByPath[full]){
+          if(im.tagName.toLowerCase()==="image"){
+            const newImg=hDoc.createElement("img");
+            newImg.src=blobByPath[full];
+            im.replaceWith(newImg);
+          }else{
+            im.src=blobByPath[full];
+          }
+        }
+      }
+    });
+    const body=hDoc.body;
+    if(!body)continue;
+    const blocks=Array.from(body.children);
+    if(!blocks.length){
+      const t=(body.textContent||"").trim();
+      if(t)sections.push({type:"html",content:`<p>${t}</p>`});
+      continue;
+    }
+    let chunkHtml="",chunkLen=0;
+    for(const blk of blocks){
+      const outer=blk.outerHTML||"";
+      const tLen=(blk.textContent||"").trim().length+(blk.querySelectorAll("img").length*400);
+      if(chunkLen+tLen>2800&&chunkLen>300){
+        sections.push({type:"html",content:chunkHtml});
+        chunkHtml=outer;
+        chunkLen=tLen;
+      }else{
+        chunkHtml+=outer;
+        chunkLen+=tLen;
+      }
+    }
+    if(chunkHtml.trim())sections.push({type:"html",content:chunkHtml});
+  }
+  return sections.length?sections:[{type:"text",content:"(Nenhum texto legível encontrado neste EPUB)"}];
+}
+
+async function parseDocxBuffer(buf){
+  const zip=await window.JSZip.loadAsync(buf);
+  const xml=await zip.file("word/document.xml")?.async("string");
+  if(!xml)throw new Error("DOCX invalido");
+  const parser=new DOMParser();
+  const doc=parser.parseFromString(xml,"application/xml");
+  const paras=[];
+  doc.querySelectorAll("p").forEach(p=>{
+    let line="";
+    p.querySelectorAll("t").forEach(t=>{line+=t.textContent||""});
+    if(line.trim())paras.push(line.trim());
+  });
+  return paginatePlainText(paras.join("\n\n"),2300);
+}
+
+async function parseCbzBuffer(buf){
+  const zip=await window.JSZip.loadAsync(buf);
+  const imgRe=/\.(jpe?g|png|webp|gif|bmp|avif)$/i;
+  const entries=[];
+  zip.forEach((relPath,file)=>{
+    if(!file.dir&&imgRe.test(relPath)&&!relPath.includes("__MACOSX")){
+      entries.push(file);
+    }
+  });
+  entries.sort((a,b)=>a.name.localeCompare(b.name,"pt",{numeric:true,sensitivity:"base"}));
+  const urls=[];
+  for(const entry of entries){
+    const blob=await entry.async("blob");
+    const u=URL.createObjectURL(blob);
+    blobUrlsToCleanup.push(u);
+    urls.push(u);
+  }
+  return urls;
+}
+
+async function renderCbzCanvas(pageNum,canvas){
+  const url=cbzImages[pageNum-1];
+  if(!url)return;
+  const imgEl=await new Promise((res,rej)=>{
+    const im=new Image();
+    im.onload=()=>res(im);
+    im.onerror=rej;
+    im.src=url;
+  });
+  const availW=Math.max(280,(rCanvasWrap.clientWidth-120)/(bookSpread===2?2.05:1));
+  const availH=Math.max(320,rCanvasWrap.clientHeight-36);
+  const fitScale=Math.min(availW/imgEl.naturalWidth,availH/imgEl.naturalHeight);
+  const finalScale=Math.max(0.3,fitScale*bookZoom);
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  canvas.width=Math.floor(imgEl.naturalWidth*finalScale*dpr);
+  canvas.height=Math.floor(imgEl.naturalHeight*finalScale*dpr);
+  canvas.style.width=Math.floor(imgEl.naturalWidth*finalScale)+"px";
+  canvas.style.height=Math.floor(imgEl.naturalHeight*finalScale)+"px";
+  const ctx=canvas.getContext("2d");
+  ctx.drawImage(imgEl,0,0,canvas.width,canvas.height);
+}
 
 function rPrefKey(){return "iptv_rpref_"+uPrefix()}
 function bmkKey(){return "iptv_bmk_"+uPrefix()}
@@ -568,6 +752,29 @@ async function renderSingleCanvas(pageNum,canvas){
 }
 
 async function renderKindleText(pageNum){
+  rReflow.style.fontSize=kindleFontPx+"px";
+  rReflow.innerHTML="";
+  const head=document.createElement("div");
+  head.className="r-reflow-head";
+  head.innerHTML=`<span>${curBook.title}</span><span>P\u00e1gina ${pageNum} de ${bookTotal}</span>`;
+  const body=document.createElement("div");
+
+  if(bookPagesData.length>0){
+    const pgObj=bookPagesData[pageNum-1]||{type:"text",content:""};
+    if(pgObj.type==="html"){
+      rReflow.classList.add("html-mode");
+      body.innerHTML=pgObj.content;
+    }else{
+      rReflow.classList.remove("html-mode");
+      body.textContent=pgObj.content;
+    }
+    rReflow.append(head,body);
+    rCanvasWrap.scrollTop=0;
+    return;
+  }
+
+  rReflow.classList.remove("html-mode");
+  if(!pdfDoc)return;
   const page=await pdfDoc.getPage(pageNum);
   const tc=await page.getTextContent();
   let lines=[],lastY=null,curLine="";
@@ -584,12 +791,6 @@ async function renderKindleText(pageNum){
   }
   if(curLine.trim())lines.push(curLine.trim());
   const bodyText=lines.join("\n").trim();
-  rReflow.style.fontSize=kindleFontPx+"px";
-  rReflow.innerHTML="";
-  const head=document.createElement("div");
-  head.className="r-reflow-head";
-  head.innerHTML=`<span>${curBook.title}</span><span>P\u00e1gina ${pageNum} de ${bookTotal}</span>`;
-  const body=document.createElement("div");
   body.textContent=bodyText||"(Esta página contém apenas imagens/ilustrações. Use o modo '📄 Página' acima para visualizá-la.)";
   rReflow.append(head,body);
   rCanvasWrap.scrollTop=0;
@@ -598,6 +799,10 @@ async function renderKindleText(pageNum){
 async function renderBookView(){
   if(!curBook)return;
   const myToken=++renderToken;
+  const ext=(curBook.ext||"pdf").toLowerCase();
+  const isTextOnlyFormat=ext==="epub"||ext==="txt"||ext==="md"||ext==="docx";
+  const isCbz=ext==="cbz";
+
   const pct=bookTotal>0?Math.round((bookPage/bookTotal)*100):0;
   const minsLeft=Math.max(1,Math.round((bookTotal-bookPage)*1.2));
   rSub.textContent=`P\u00e1gina ${bookPage} de ${bookTotal} \u2022 ${pct}% conclu\u00eddo`;
@@ -611,6 +816,8 @@ async function renderBookView(){
   saveBookProgress(curBook.id,bookPage,bookTotal);
   updateBmkUI();
 
+  document.getElementById("rmode-page").hidden=isTextOnlyFormat;
+  document.getElementById("rmode-kindle").hidden=isCbz;
   document.getElementById("rmode-page").classList.toggle("active",bookMode==="page");
   document.getElementById("rmode-kindle").classList.toggle("active",bookMode==="kindle");
   document.getElementById("rmode-drive").classList.toggle("active",bookMode==="drive");
@@ -629,9 +836,8 @@ async function renderBookView(){
   }
 
   rFrame.hidden=true;
-  if(!pdfDoc)return;
 
-  if(bookMode==="kindle"){
+  if(bookMode==="kindle"||isTextOnlyFormat){
     rPages.hidden=true;
     rReflow.hidden=false;
     rZoomVal.textContent=kindleFontPx+"px";
@@ -643,17 +849,28 @@ async function renderBookView(){
     return;
   }
 
+  if(!pdfDoc&&!cbzImages.length)return;
   rReflow.hidden=true;
   rPages.hidden=false;
   rZoomVal.textContent=Math.round(bookZoom*100)+"%";
   rLoader.hidden=false;
   try{
-    await renderSingleCanvas(bookPage,c1);
-    if(bookSpread===2&&bookPage+1<=bookTotal){
-      c2.hidden=false;
-      await renderSingleCanvas(bookPage+1,c2);
+    if(isCbz){
+      await renderCbzCanvas(bookPage,c1);
+      if(bookSpread===2&&bookPage+1<=bookTotal){
+        c2.hidden=false;
+        await renderCbzCanvas(bookPage+1,c2);
+      }else{
+        c2.hidden=true;
+      }
     }else{
-      c2.hidden=true;
+      await renderSingleCanvas(bookPage,c1);
+      if(bookSpread===2&&bookPage+1<=bookTotal){
+        c2.hidden=false;
+        await renderSingleCanvas(bookPage+1,c2);
+      }else{
+        c2.hidden=true;
+      }
     }
     rCanvasWrap.scrollTop=0;
   }catch{}
@@ -672,7 +889,9 @@ function turnBookPage(dir){
 }
 
 async function openBook(b){
+  cleanupBookBlobs();
   curBook=b;
+  const ext=(b.ext||"pdf").toLowerCase();
   rTitle.textContent=b.title;
   rSub.textContent="Abrindo livro...";
   rSettings.hidden=true;
@@ -690,25 +909,49 @@ async function openBook(b){
   const savedP=getProg(b.id);
   bookPage=(savedP&&savedP.t>=1)?savedP.t:1;
   bookTotal=(savedP&&savedP.d>=1)?savedP.d:1;
-  bookMode="page";
+  bookMode=(ext==="epub"||ext==="txt"||ext==="md"||ext==="docx")?"kindle":"page";
   bookZoom=1;
   updateBookWatchedUI();
   updateBmkUI();
 
   rLoader.hidden=false;
-  rLoader.textContent="Carregando livro PDF...";
+  rLoader.textContent=`Carregando ${ext.toUpperCase()}...`;
   rPages.hidden=true;
   rReflow.hidden=true;
   rFrame.hidden=true;
 
   try{
-    const loadingTask=window.pdfjsLib.getDocument({
-      url:`/api/stream?id=${b.id}&type=pdf`,
-      cMapUrl:"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/",
-      cMapPacked:true
-    });
-    pdfDoc=await loadingTask.promise;
-    bookTotal=pdfDoc.numPages||1;
+    const streamUrl=`/api/stream?id=${b.id}&type=book`;
+    if(ext==="epub"){
+      const resp=await fetch(streamUrl);
+      if(!resp.ok)throw new Error("erro download");
+      bookPagesData=await parseEpubBuffer(await resp.arrayBuffer());
+      bookTotal=bookPagesData.length||1;
+    }else if(ext==="docx"){
+      const resp=await fetch(streamUrl);
+      if(!resp.ok)throw new Error("erro download");
+      bookPagesData=await parseDocxBuffer(await resp.arrayBuffer());
+      bookTotal=bookPagesData.length||1;
+    }else if(ext==="txt"||ext==="md"){
+      const resp=await fetch(streamUrl);
+      if(!resp.ok)throw new Error("erro download");
+      bookPagesData=paginatePlainText(await resp.text(),2300);
+      bookTotal=bookPagesData.length||1;
+    }else if(ext==="cbz"){
+      const resp=await fetch(streamUrl);
+      if(!resp.ok)throw new Error("erro download");
+      cbzImages=await parseCbzBuffer(await resp.arrayBuffer());
+      if(!cbzImages.length)throw new Error("cbz vazio");
+      bookTotal=cbzImages.length;
+    }else{
+      const loadingTask=window.pdfjsLib.getDocument({
+        url:`/api/stream?id=${b.id}&type=pdf`,
+        cMapUrl:"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/",
+        cMapPacked:true
+      });
+      pdfDoc=await loadingTask.promise;
+      bookTotal=pdfDoc.numPages||1;
+    }
     if(bookPage>bookTotal)bookPage=1;
     await renderBookView();
   }catch{
@@ -719,6 +962,7 @@ async function openBook(b){
 
 function closeBook(){
   if(pdfDoc){try{pdfDoc.destroy()}catch{}pdfDoc=null}
+  cleanupBookBlobs();
   rFrame.src="";
   rSettings.hidden=true;
   readerEl.hidden=true;

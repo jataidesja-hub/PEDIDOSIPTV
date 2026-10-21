@@ -49,7 +49,26 @@ export default async function handler(req, res) {
     return map;
   }
 
-  const isPdf = f => f.mimeType === "application/pdf" || /\.pdf$/i.test(f.name || "");
+  const BOOK_EXT_RE = /\.(pdf|epub|cbz|txt|md|docx)$/i;
+  const BOOK_MIMES = new Set([
+    "application/pdf",
+    "application/epub+zip",
+    "application/vnd.comicbook+zip",
+    "text/plain",
+    "text/markdown",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ]);
+  const isPdf = f => BOOK_MIMES.has(f.mimeType) || BOOK_EXT_RE.test(f.name || "");
+  function getBookFormat(f) {
+    const m = /\.([a-z0-9]+)$/i.exec(f.name || "");
+    if (m) return m[1].toLowerCase();
+    if (f.mimeType === "application/epub+zip") return "epub";
+    if (f.mimeType === "application/vnd.comicbook+zip") return "cbz";
+    if (f.mimeType === "text/plain") return "txt";
+    if (f.mimeType === "text/markdown") return "md";
+    if (f.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return "docx";
+    return "pdf";
+  }
 
   const CAT_ALIASES = {
     filmes: "Filmes", filme: "Filmes",
@@ -115,12 +134,16 @@ export default async function handler(req, res) {
       rawTitle: clean(f.name),
       cover: img(coverOf(f.name)) || folderCover || f.thumbnailLink || null
     }));
-    const books = files.filter(isPdf).map(f => ({
-      id: f.id,
-      title: stripTags(f.name),
-      rawTitle: clean(f.name),
-      cover: img(coverOf(f.name)) || folderCover || (f.thumbnailLink ? f.thumbnailLink.replace(/=s\d+.*$/, "=s500") : img(f))
-    }));
+    const books = files.filter(isPdf).map(f => {
+      const ext = getBookFormat(f);
+      return {
+        id: f.id,
+        title: stripTags(f.name),
+        rawTitle: clean(f.name),
+        ext,
+        cover: img(coverOf(f.name)) || folderCover || (f.thumbnailLink ? f.thumbnailLink.replace(/=s\d+.*$/, "=s500") : (ext === "pdf" ? img(f) : null))
+      };
+    });
 
     res.setHeader("Cache-Control", req.query.t ? "no-store" : "s-maxage=120, stale-while-revalidate=600");
     return res.json({ cover: folderCover, folders, videos, books });
@@ -264,13 +287,15 @@ export default async function handler(req, res) {
 
   const outBooks = allBooks.map(b => {
     const info = extractTags(clean(b.name), b.parentCat || "Biblioteca", b.parentSub);
+    const ext = getBookFormat(b);
     return {
       id: b.id,
       title: info.cleanTitle,
       cat: info.cat || "Biblioteca",
       sub: info.sub,
       subs: info.subs,
-      cover: img(findCoverByName(b.name)) || (b.thumbnailLink ? b.thumbnailLink.replace(/=s\d+.*$/, "=s500") : img(b))
+      ext,
+      cover: img(findCoverByName(b.name)) || (b.thumbnailLink ? b.thumbnailLink.replace(/=s\d+.*$/, "=s500") : (ext === "pdf" ? img(b) : null))
     };
   });
 
