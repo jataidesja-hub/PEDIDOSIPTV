@@ -859,8 +859,11 @@ async function renderKindleText(pageNum){
   rCanvasWrap.scrollTop=0;
 }
 
-async function renderBookView(){
+async function renderBookView(opts){
   if(!curBook)return;
+  const preserveScroll=opts&&opts.preserveScroll;
+  const prevScrollXRatio=rCanvasWrap.scrollWidth>0?(rCanvasWrap.scrollLeft+rCanvasWrap.clientWidth/2)/rCanvasWrap.scrollWidth:0.5;
+  const prevScrollYRatio=rCanvasWrap.scrollHeight>0?(rCanvasWrap.scrollTop+rCanvasWrap.clientHeight/2)/rCanvasWrap.scrollHeight:0;
   const myToken=++renderToken;
   const ext=(curBook.ext||"pdf").toLowerCase();
   const isTextOnlyFormat=ext==="epub"||ext==="txt"||ext==="md"||ext==="docx";
@@ -916,7 +919,7 @@ async function renderBookView(){
   rReflow.hidden=true;
   rPages.hidden=false;
   rZoomVal.textContent=Math.round(bookZoom*100)+"%";
-  rLoader.hidden=false;
+  if(!preserveScroll)rLoader.hidden=false;
   try{
     if(isCbz){
       await renderCbzCanvas(bookPage,c1);
@@ -935,7 +938,13 @@ async function renderBookView(){
         c2.hidden=true;
       }
     }
-    rCanvasWrap.scrollTop=0;
+    if(preserveScroll){
+      rCanvasWrap.scrollLeft=Math.max(0,rCanvasWrap.scrollWidth*prevScrollXRatio-rCanvasWrap.clientWidth/2);
+      rCanvasWrap.scrollTop=Math.max(0,rCanvasWrap.scrollHeight*prevScrollYRatio-rCanvasWrap.clientHeight/2);
+    }else{
+      rCanvasWrap.scrollTop=0;
+      rCanvasWrap.scrollLeft=0;
+    }
   }catch{}
   if(myToken===renderToken)rLoader.hidden=true;
 }
@@ -943,6 +952,7 @@ async function renderBookView(){
 function goToBookPage(n){
   if(!bookTotal)return;
   bookPage=Math.max(1,Math.min(bookTotal,Number(n)||1));
+  bookZoom=1;
   renderBookView();
 }
 
@@ -1119,15 +1129,98 @@ rSlider.oninput=e=>{rPageIn.value=e.target.value};
 rSlider.onchange=e=>goToBookPage(e.target.value);
 rPageIn.onchange=e=>goToBookPage(e.target.value);
 
-let touchStartX=0,touchStartY=0;
+let touchStartX=0,touchStartY=0,isPinching=false,wasPinching=false;
+let pinchStartDist=0,pinchStartZoom=1,pinchStartFont=20,c1StartW=0,c1StartH=0,c2StartW=0,c2StartH=0;
+let pinchMidX=0,pinchMidY=0,pinchScrollL=0,pinchScrollT=0,lastTapTime=0;
+
+function getTouchDist(t1,t2){
+  return Math.hypot(t2.clientX-t1.clientX,t2.clientY-t1.clientY);
+}
+
 rCanvasWrap.addEventListener("touchstart",e=>{
-  if(e.touches.length===1){touchStartX=e.touches[0].clientX;touchStartY=e.touches[0].clientY}
+  if(e.touches.length===2){
+    isPinching=true;
+    wasPinching=true;
+    pinchStartDist=getTouchDist(e.touches[0],e.touches[1]);
+    pinchStartZoom=bookZoom;
+    pinchStartFont=kindleFontPx;
+    c1StartW=c1.offsetWidth||1;
+    c1StartH=c1.offsetHeight||1;
+    c2StartW=c2.offsetWidth||1;
+    c2StartH=c2.offsetHeight||1;
+    const rect=rCanvasWrap.getBoundingClientRect();
+    pinchMidX=((e.touches[0].clientX+e.touches[1].clientX)/2)-rect.left;
+    pinchMidY=((e.touches[0].clientY+e.touches[1].clientY)/2)-rect.top;
+    pinchScrollL=rCanvasWrap.scrollLeft;
+    pinchScrollT=rCanvasWrap.scrollTop;
+  }else if(e.touches.length===1){
+    touchStartX=e.touches[0].clientX;
+    touchStartY=e.touches[0].clientY;
+  }
 },{passive:true});
+
+rCanvasWrap.addEventListener("touchmove",e=>{
+  if(isPinching&&e.touches.length===2){
+    e.preventDefault();
+    const dist=getTouchDist(e.touches[0],e.touches[1]);
+    if(pinchStartDist<10)return;
+    const ratio=dist/pinchStartDist;
+    const ext=(curBook&&curBook.ext||"pdf").toLowerCase();
+    const isTextMode=bookMode==="kindle"||ext==="epub"||ext==="txt"||ext==="md"||ext==="docx";
+    if(isTextMode){
+      kindleFontPx=Math.round(Math.max(14,Math.min(38,pinchStartFont*ratio)));
+      rReflow.style.fontSize=kindleFontPx+"px";
+      rZoomVal.textContent=kindleFontPx+"px";
+    }else{
+      const nextZ=Math.max(1,Math.min(4,+(pinchStartZoom*ratio).toFixed(2)));
+      const scaleChange=nextZ/pinchStartZoom;
+      bookZoom=nextZ;
+      rZoomVal.textContent=Math.round(bookZoom*100)+"%";
+      c1.style.width=Math.floor(c1StartW*scaleChange)+"px";
+      c1.style.height=Math.floor(c1StartH*scaleChange)+"px";
+      if(!c2.hidden){
+        c2.style.width=Math.floor(c2StartW*scaleChange)+"px";
+        c2.style.height=Math.floor(c2StartH*scaleChange)+"px";
+      }
+      rCanvasWrap.scrollLeft=Math.max(0,(pinchScrollL+pinchMidX)*scaleChange-pinchMidX);
+      rCanvasWrap.scrollTop=Math.max(0,(pinchScrollT+pinchMidY)*scaleChange-pinchMidY);
+    }
+  }
+},{passive:false});
+
 rCanvasWrap.addEventListener("touchend",e=>{
-  if(!e.changedTouches.length)return;
+  if(isPinching&&e.touches.length<2){
+    isPinching=false;
+    const ext=(curBook&&curBook.ext||"pdf").toLowerCase();
+    const isTextMode=bookMode==="kindle"||ext==="epub"||ext==="txt"||ext==="md"||ext==="docx";
+    if(!isTextMode){
+      renderBookView({preserveScroll:true});
+    }
+    setTimeout(()=>{wasPinching=false},180);
+    return;
+  }
+  if(wasPinching||!e.changedTouches.length)return;
   const dx=e.changedTouches[0].clientX-touchStartX;
   const dy=e.changedTouches[0].clientY-touchStartY;
-  if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5){
+
+  // Toque duplo com 1 dedo alterna zoom 1x <-> 2x
+  if(Math.abs(dx)<12&&Math.abs(dy)<12){
+    const now=Date.now();
+    if(now-lastTapTime<280){
+      lastTapTime=0;
+      const ext=(curBook&&curBook.ext||"pdf").toLowerCase();
+      const isTextMode=bookMode==="kindle"||ext==="epub"||ext==="txt"||ext==="md"||ext==="docx";
+      if(!isTextMode){
+        bookZoom=bookZoom>1.15?1:2;
+        renderBookView();
+      }
+      return;
+    }
+    lastTapTime=now;
+  }
+
+  // Só vira a página no swipe se não estiver com zoom ativo
+  if(bookZoom<=1.05&&Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5){
     if(dx<0)turnBookPage(1);else turnBookPage(-1);
   }
 },{passive:true});

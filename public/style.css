@@ -91,13 +91,13 @@ main{padding:20px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minm
 }
 
 .rstage{flex:1;position:relative;display:flex;align-items:stretch;justify-content:center;overflow:hidden;min-height:0}
-.r-canvas-wrap{width:100%;height:100%;overflow:auto;display:flex;align-items:center;justify-content:center;padding:4px 6px;scroll-behavior:smooth;background:#fff;color:#181818}
+.r-canvas-wrap{width:100%;height:100%;overflow:auto;display:flex;padding:4px 6px;background:#fff;color:#181818;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch}
 #reader.theme-sepia .r-canvas-wrap{filter:sepia(.38) contrast(.96) brightness(.97)}
 #reader.theme-dark .r-canvas-wrap{filter:invert(.9) hue-rotate(180deg) contrast(.96)}
 #reader.theme-amoled .r-canvas-wrap{filter:invert(1) hue-rotate(180deg)}
-.r-pages{display:flex;gap:10px;align-items:center;justify-content:center;margin:auto;width:100%;height:100%}
+.r-pages{display:flex;gap:10px;align-items:center;justify-content:center;margin:auto}
 .r-pages[hidden],#pdf-c2[hidden],.r-reflow[hidden],.r-frame[hidden],.r-loader[hidden]{display:none}
-.r-pages canvas{max-width:100%;height:auto;border-radius:0;box-shadow:none;background:#fff;display:block}
+.r-pages canvas{max-width:none;height:auto;border-radius:0;box-shadow:none;background:#fff;display:block;flex-shrink:0}
 
 .r-reflow{width:min(820px,100%);min-height:100%;margin:0 auto;padding:18px 20px;border-radius:0;box-shadow:none;line-height:1.85;font-size:19px;user-select:text;white-space:pre-wrap;font-family:Georgia,serif;background:#fff;color:#161616}
 .r-reflow.html-mode{white-space:normal}
