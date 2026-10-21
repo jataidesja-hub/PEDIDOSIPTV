@@ -16,10 +16,12 @@
 <div id="app" hidden>
   <header>
     <a href="#" id="home">&#9654; PEDIDOS IPTV</a>
+    <button id="back-btn" class="back-btn" hidden>&#8592; Voltar</button>
     <nav id="crumbs"></nav>
     <div class="header-right">
       <input id="search" type="search" placeholder="Buscar título...">
       <span id="uinfo"></span>
+      <button id="app-fs" title="Tela cheia">&#9974; Tela cheia</button>
       <button id="refresh" title="Atualizar">&#8635; Atualizar</button>
       <button id="logout" title="Sair">Sair</button>
     </div>
@@ -34,8 +36,9 @@
     <div class="pactions">
       <button id="prev-ep" class="pbtn" hidden>&#9664; Anterior</button>
       <button id="next-ep" class="pbtn" hidden>Próximo &#9654;</button>
+      <button id="player-fs" class="pbtn">&#9974; Tela cheia</button>
       <button id="toggle-watched"></button>
-      <button id="close">&#10005;</button>
+      <button id="close">&#10005; Voltar</button>
     </div>
   </div>
   <div id="vjs-wrap">
@@ -45,6 +48,7 @@
   <div class="pfooter">
     <button id="back10" class="pbtn">&#8630; -10s</button>
     <button id="fwd10" class="pbtn">+10s &#8631;</button>
+    <button id="player-fs2" class="pbtn">&#9974; Tela cheia</button>
     <button id="alt">Player alternativo (Drive)</button>
   </div>
 </div>

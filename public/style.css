@@ -1,6 +1,11 @@
 *{box-sizing:border-box}body{margin:0;background:#0b0b10;color:#eee;font-family:system-ui,sans-serif}
 header{display:flex;gap:14px;align-items:center;padding:14px 20px;background:#14141c;position:sticky;top:0;z-index:5;flex-wrap:wrap;border-bottom:1px solid #1f1f2c}
 header a{color:#ff4d6d;font-weight:700;text-decoration:none}#crumbs a{color:#aaa;margin-right:8px;cursor:pointer}#crumbs a:hover{color:#fff}
+.back-btn{background:#232334;color:#fff;border:1px solid #3d3d56;padding:6px 13px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:.15s}
+.back-btn:hover{background:#ff4d6d;border-color:#ff4d6d;color:#fff}
+.back-btn[hidden]{display:none}
+.cat-pill.back-pill{background:#232334;border-color:#3d3d56;color:#fff;font-weight:600}
+.cat-pill.back-pill:hover{background:#ff4d6d;border-color:#ff4d6d}
 .header-right{margin-left:auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 #search{background:#1d1d29;border:1px solid #2e2e40;color:#eee;padding:7px 12px;border-radius:999px;font-size:13px;width:190px;outline:none}
 #search:focus{border-color:#ff4d6d}
@@ -47,7 +52,7 @@ main{padding:20px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minm
 #frame{width:min(1100px,100%);aspect-ratio:16/9;border:0;background:#000;border-radius:8px}
 #frame[hidden]{display:none}
 #close{background:#ff4d6d;border:0;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font-weight:700}
-#refresh,#logout{background:#262634;color:#eee;border:0;padding:8px 14px;border-radius:6px;cursor:pointer}#refresh:hover,#logout:hover{background:#ff4d6d}
+#app-fs,#refresh,#logout{background:#262634;color:#eee;border:0;padding:8px 14px;border-radius:6px;cursor:pointer}#app-fs:hover,#refresh:hover,#logout:hover{background:#ff4d6d}
 .pfooter{margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
 #alt{background:#262634;color:#aaa;border:1px solid #3a3a4c;padding:7px 12px;border-radius:6px;cursor:pointer;font-size:13px}
 #alt:hover{color:#fff;border-color:#ff4d6d}
