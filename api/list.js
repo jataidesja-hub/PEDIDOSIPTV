@@ -36,10 +36,12 @@ export default async function handler(req, res) {
       const batch = folderList.slice(i, i + batchSize);
       await Promise.all(batch.map(async f => {
         try {
-          const list = await listByQuery(`'${f.id}' in parents and mimeType contains 'image/' and trashed=false`, 10);
-          const chosen = list.find(im => /^(capa|cover|poster)$/i.test(clean(im.name)))
-            || list.find(im => norm(im.name) === norm(f.name))
-            || list[0];
+          const list = await listByQuery(`'${f.id}' in parents and (mimeType contains 'image/' or mimeType = 'application/pdf') and trashed=false`, 10);
+          const imgsOnly = list.filter(im => im.mimeType && im.mimeType.startsWith("image/"));
+          const chosen = imgsOnly.find(im => /^(capa|cover|poster)$/i.test(clean(im.name)))
+            || imgsOnly.find(im => norm(im.name) === norm(f.name))
+            || imgsOnly[0]
+            || list.find(im => im.mimeType === "application/pdf");
           if (chosen) map[f.id] = img(chosen);
         } catch {}
       }));
@@ -47,12 +49,15 @@ export default async function handler(req, res) {
     return map;
   }
 
+  const isPdf = f => f.mimeType === "application/pdf" || /\.pdf$/i.test(f.name || "");
+
   const CAT_ALIASES = {
     filmes: "Filmes", filme: "Filmes",
     series: "Séries", serie: "Séries",
     novelas: "Novelas", novela: "Novelas",
     novelinhas: "Novelinhas", novelinha: "Novelinhas",
-    animes: "Animes", anime: "Animes"
+    animes: "Animes", anime: "Animes",
+    biblioteca: "Biblioteca", bliblioteca: "Biblioteca", livros: "Biblioteca", livro: "Biblioteca", pdf: "Biblioteca", pdfs: "Biblioteca"
   };
 
   const SUB_ALIASES = {
@@ -63,7 +68,14 @@ export default async function handler(req, res) {
     ficcao: "Ficção Científica", "ficcao cientifica": "Ficção Científica", scifi: "Ficção Científica",
     animacao: "Animação", infantil: "Animação", documentario: "Documentário", documentarios: "Documentário",
     policial: "Policial", crime: "Policial", nacional: "Nacionais", nacionais: "Nacionais",
-    dorama: "Doramas", doramas: "Doramas"
+    dorama: "Doramas", doramas: "Doramas",
+    autoajuda: "Autoajuda", "auto ajuda": "Autoajuda", desenvolvimento: "Autoajuda",
+    financas: "Finanças & Negócios", negocios: "Finanças & Negócios", "financas e negocios": "Finanças & Negócios", economia: "Finanças & Negócios",
+    biografia: "Biografia", biografias: "Biografia",
+    fantasia: "Fantasia",
+    estudos: "Estudos", educacao: "Estudos", academico: "Estudos", apostilas: "Estudos",
+    religiao: "Religião", espiritualidade: "Religião", evangelico: "Religião", catolico: "Religião",
+    quadrinhos: "Quadrinhos & Mangás", hq: "Quadrinhos & Mangás", hqs: "Quadrinhos & Mangás", manga: "Quadrinhos & Mangás", mangas: "Quadrinhos & Mangás"
   };
 
   function resolveMainCat(raw) {
@@ -103,16 +115,23 @@ export default async function handler(req, res) {
       rawTitle: clean(f.name),
       cover: img(coverOf(f.name)) || folderCover || f.thumbnailLink || null
     }));
+    const books = files.filter(isPdf).map(f => ({
+      id: f.id,
+      title: stripTags(f.name),
+      rawTitle: clean(f.name),
+      cover: img(coverOf(f.name)) || folderCover || (f.thumbnailLink ? f.thumbnailLink.replace(/=s\d+.*$/, "=s500") : img(f))
+    }));
 
     res.setHeader("Cache-Control", req.query.t ? "no-store" : "s-maxage=120, stale-while-revalidate=600");
-    return res.json({ cover: folderCover, folders, videos });
+    return res.json({ cover: folderCover, folders, videos, books });
   }
 
-  // MODO CATALOGO (Raiz): desce automaticamente em pastas de Categoria (Filmes, Series, Novelas, Novelinhas, Animes)
+  // MODO CATALOGO (Raiz): desce automaticamente em pastas de Categoria (Filmes, Series, Novelas, Novelinhas, Animes, Biblioteca)
   // e tambem em pastas de Subcategoria (Acao, Comedia, Drama, etc.) para montar o catalogo unificado!
   const rootImgs = files.filter(f => f.mimeType.startsWith("image/"));
   const rootFolders = files.filter(f => f.mimeType === "application/vnd.google-apps.folder");
   const rootVideos = files.filter(f => f.mimeType.startsWith("video/"));
+  const rootBooks = files.filter(isPdf);
 
   const catFolders = [];
   const directFolders = [];
@@ -127,6 +146,7 @@ export default async function handler(req, res) {
   const level1Shows = [];
   const level1Imgs = [];
   const level1Videos = [];
+  const level1Books = [];
 
   if (catFolders.length > 0) {
     await Promise.all(catFolders.map(async cf => {
@@ -138,6 +158,8 @@ export default async function handler(req, res) {
             level1Imgs.push(f);
           } else if (f.mimeType.startsWith("video/")) {
             level1Videos.push({ ...f, parentCat, parentSub: "" });
+          } else if (isPdf(f)) {
+            level1Books.push({ ...f, parentCat: parentCat || "Biblioteca", parentSub: "" });
           } else if (f.mimeType === "application/vnd.google-apps.folder") {
             const sc = resolveSubCat(f.name);
             if (sc) subCatFolders.push({ ...f, mainCat: parentCat, subCat: sc });
@@ -151,6 +173,7 @@ export default async function handler(req, res) {
   const level2Shows = [];
   const level2Imgs = [];
   const level2Videos = [];
+  const level2Books = [];
 
   if (subCatFolders.length > 0) {
     await Promise.all(subCatFolders.map(async sf => {
@@ -162,6 +185,8 @@ export default async function handler(req, res) {
             level2Imgs.push(f);
           } else if (f.mimeType.startsWith("video/")) {
             level2Videos.push({ ...f, parentCat: sf.mainCat, parentSub: pSub });
+          } else if (isPdf(f)) {
+            level2Books.push({ ...f, parentCat: sf.mainCat || "Biblioteca", parentSub: pSub });
           } else if (f.mimeType === "application/vnd.google-apps.folder") {
             level2Shows.push({ ...f, parentCat: sf.mainCat, parentSub: pSub });
           }
@@ -193,7 +218,7 @@ export default async function handler(req, res) {
         const mc = resolveMainCat(p);
         const sc = resolveSubCat(p);
         if (mc) cat = mc;
-        else if (sc) { if (!subs.includes(sc)) subs.push(sc); }
+        else if (sc && sc !== "__ALL__") { if (!subs.includes(sc)) subs.push(sc); }
         else if (!cat) cat = p;
         else if (!subs.includes(p)) subs.push(p);
       }
@@ -231,6 +256,24 @@ export default async function handler(req, res) {
     };
   });
 
+  const allBooks = [
+    ...rootBooks.map(b => ({ ...b, parentCat: "Biblioteca", parentSub: "" })),
+    ...level1Books,
+    ...level2Books
+  ];
+
+  const outBooks = allBooks.map(b => {
+    const info = extractTags(clean(b.name), b.parentCat || "Biblioteca", b.parentSub);
+    return {
+      id: b.id,
+      title: info.cleanTitle,
+      cat: info.cat || "Biblioteca",
+      sub: info.sub,
+      subs: info.subs,
+      cover: img(findCoverByName(b.name)) || (b.thumbnailLink ? b.thumbnailLink.replace(/=s\d+.*$/, "=s500") : img(b))
+    };
+  });
+
   res.setHeader("Cache-Control", req.query.t ? "no-store" : "s-maxage=120, stale-while-revalidate=600");
-  res.json({ folders: outFolders, videos: outVideos });
+  res.json({ folders: outFolders, videos: outVideos, books: outBooks });
 }

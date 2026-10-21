@@ -11,16 +11,18 @@ const MAIN_CATS=[
   {id:"S\u00e9ries",label:"\uD83D\uDCFA S\u00e9ries"},
   {id:"Novelas",label:"\uD83C\uDFAD Novelas"},
   {id:"Novelinhas",label:"\uD83D\uDCF1 Novelinhas"},
-  {id:"Animes",label:"\u26A1 Animes"}
+  {id:"Animes",label:"\u26A1 Animes"},
+  {id:"Biblioteca",label:"\uD83D\uDCDA Biblioteca"}
 ];
 
 const SUBCATS_BY_MAIN={
   "Filmes":["\uD83D\uDD25 Em Alta","A\u00e7\u00e3o","Aventura","Com\u00e9dia","Drama","Terror","Suspense","Romance","Fic\u00e7\u00e3o Cient\u00edfica","Anima\u00e7\u00e3o","Document\u00e1rio","Nacionais"],
-  "S\u00e9ries":["\uD83D\uDD25 Em Alta","A\u00e7\u00e3o","Com\u00e9dia","Drama","Suspense","Policial","Fic\u00e7\u00e3o Cient\u00edfica","Romance","Terror","Doramas","Document\u00e1rio"]
+  "S\u00e9ries":["\uD83D\uDD25 Em Alta","A\u00e7\u00e3o","Com\u00e9dia","Drama","Suspense","Policial","Fic\u00e7\u00e3o Cient\u00edfica","Romance","Terror","Doramas","Document\u00e1rio"],
+  "Biblioteca":["\uD83D\uDD25 Em Alta","Romance","Fic\u00e7\u00e3o Cient\u00edfica","Autoajuda","Finan\u00e7as & Neg\u00f3cios","Biografia","Fantasia","Terror","Suspense","Estudos","Religi\u00e3o","Quadrinhos & Mang\u00e1s"]
 };
 
 let stack=[],bust="",cur=null,currentUser=null,vplayer=null;
-let lastData={folders:[],videos:[]},activeCat="ALL",activeSub="ALL",savedCat="ALL",savedSub="ALL",searchTerm="";
+let lastData={folders:[],videos:[],books:[]},activeCat="ALL",activeSub="ALL",savedCat="ALL",savedSub="ALL",searchTerm="";
 
 function normStr(s){
   return String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLowerCase();
@@ -87,9 +89,10 @@ function initVjs(){
   return vplayer;
 }
 
-const card=(item,icon,fn,isVideo)=>{
+const card=(item,icon,fn,mediaType)=>{
   const d=document.createElement("div");
-  const watched=isVideo&&isWatched(item.id);
+  const isVideo=mediaType==="video",isBook=mediaType==="book";
+  const watched=(isVideo||isBook)&&isWatched(item.id);
   d.className="card"+(watched?" watched":"");
   d.dataset.id=item.id;
   const imgDiv=document.createElement("div");
@@ -97,7 +100,7 @@ const card=(item,icon,fn,isVideo)=>{
   if(item.cover)imgDiv.style.backgroundImage=`url('${item.cover}')`;
   else imgDiv.textContent=icon;
 
-  if(isVideo){
+  if(isVideo||isBook){
     const p=getProg(item.id);
     if(p&&p.d>0){
       const pct=Math.min(100,Math.round((p.t/p.d)*100));
@@ -105,16 +108,29 @@ const card=(item,icon,fn,isVideo)=>{
       bar.className="prog";
       bar.innerHTML=`<i style="width:${pct}%"></i>`;
       imgDiv.appendChild(bar);
+      if(isBook){
+        const bd=document.createElement("span");
+        bd.className="book-badge";
+        bd.textContent=`P\u00e1g. ${p.t}/${p.d} (${pct}%)`;
+        imgDiv.appendChild(bd);
+      }
+    }else if(isBook){
+      const bd=document.createElement("span");
+      bd.className="book-badge";
+      bd.textContent="\uD83D\uDCD6 PDF";
+      imgDiv.appendChild(bd);
     }
+    const doneLbl=isBook?"\u2713 Lido":"\u2713 Visto";
+    const markLbl=isBook?"Marcar lido":"Marcar visto";
     const b=document.createElement("button");
     b.className="wbtn";
-    b.textContent=watched?"\u2713 Visto":"Marcar visto";
+    b.textContent=watched?doneLbl:markLbl;
     b.onclick=e=>{
       e.stopPropagation();
       const next=!isWatched(item.id);
       setWatched(item.id,next);
       d.classList.toggle("watched",next);
-      b.textContent=next?"\u2713 Visto":"Marcar visto";
+      b.textContent=next?doneLbl:markLbl;
       if(activeCat==="__UNWATCHED__")render();
     };
     d.appendChild(b);
@@ -152,6 +168,7 @@ function updatePlayerWatchedBtn(){
 }
 
 function goBack(){
+  if(!readerEl.hidden){closeBook();return}
   if(!player.hidden){stop();return}
   if(stack.length>1){
     stack.pop();
@@ -256,11 +273,13 @@ function buildBars(){
     catBar.appendChild(bPill);
 
     const hasVideos=lastData.videos.length>0;
-    if(!hasVideos)return;
+    const hasBooks=(lastData.books||[]).length>0;
+    if(!hasVideos&&!hasBooks)return;
+    const onlyBooks=hasBooks&&!hasVideos;
     const pills=[
-      {id:"ALL",label:"Todos os cap\u00edtulos"},
-      {id:"__UNWATCHED__",label:"N\u00e3o vistos"},
-      {id:"__CONTINUE__",label:"Continuar assistindo"}
+      {id:"ALL",label:onlyBooks?"Todos os livros":"Todos os cap\u00edtulos"},
+      {id:"__UNWATCHED__",label:onlyBooks?"N\u00e3o lidos":"N\u00e3o vistos"},
+      {id:"__CONTINUE__",label:onlyBooks?"Continuar lendo":"Continuar assistindo"}
     ];
     if(!pills.some(p=>p.id===activeCat))activeCat="ALL";
     pills.forEach(p=>{
@@ -291,21 +310,24 @@ function render(){
   const matchSearch=it=>!q||normStr(it.title).includes(q)||normStr(it.cat).includes(q)||normStr(it.sub).includes(q);
   const inRoot=stack.length===0;
 
-  let folders=[],videos=[];
+  let folders=[],videos=[],books=[];
   if(inRoot){
     folders=lastData.folders.filter(f=>matchSearch(f)&&matchCatAndSub(f));
     videos=lastData.videos.filter(v=>matchSearch(v)&&matchCatAndSub(v));
+    books=(lastData.books||[]).filter(b=>matchSearch(b)&&matchCatAndSub(b));
   }else{
     folders=lastData.folders.filter(f=>matchSearch(f));
-    videos=lastData.videos.filter(v=>{
-      if(!matchSearch(v))return false;
-      if(activeCat==="__UNWATCHED__")return !isWatched(v.id);
-      if(activeCat==="__CONTINUE__")return !!getProg(v.id);
+    const filterMedia=it=>{
+      if(!matchSearch(it))return false;
+      if(activeCat==="__UNWATCHED__")return !isWatched(it.id);
+      if(activeCat==="__CONTINUE__")return !!getProg(it.id);
       return true;
-    });
+    };
+    videos=lastData.videos.filter(filterMedia);
+    books=(lastData.books||[]).filter(filterMedia);
   }
 
-  msg.textContent=folders.length||videos.length?"":"Nenhum título encontrado nesta categoria";
+  msg.textContent=folders.length||videos.length||books.length?"":"Nenhum título encontrado nesta categoria";
   folders.forEach(f=>card(f,"\uD83D\uDCC1",()=>{
     if(stack.length===0){
       savedCat=activeCat!=="ALL"?activeCat:(f.cat||"ALL");
@@ -317,8 +339,9 @@ function render(){
     searchInput.value="";
     searchTerm="";
     load();
-  },false));
-  videos.forEach(v=>card(v,"\uD83C\uDFAC",()=>play(v),true));
+  },"folder"));
+  books.forEach(b=>card(b,"\uD83D\uDCD6",()=>openBook(b),"book"));
+  videos.forEach(v=>card(v,"\uD83C\uDFAC",()=>play(v),"video"));
 }
 
 async function load(){
@@ -330,7 +353,8 @@ async function load(){
   const nat=(a,b)=>a.title.localeCompare(b.title,"pt",{numeric:true,sensitivity:"base"});
   const folders=(j.folders||[]).sort(nat);
   const videos=(j.videos||[]).sort(nat);
-  lastData={folders,videos};
+  const books=(j.books||[]).sort(nat);
+  lastData={folders,videos,books};
   buildBars();
   render();
 }
@@ -420,12 +444,352 @@ toggleWatchedBtn.onclick=()=>{
 };
 
 document.addEventListener("keydown",e=>{
+  if(!readerEl.hidden){
+    if(document.activeElement===rPageIn)return;
+    if(e.key==="Escape"&&!document.fullscreenElement)closeBook();
+    else if(e.key==="ArrowLeft"||e.key==="PageUp"){e.preventDefault();turnBookPage(-1)}
+    else if(e.key==="ArrowRight"||e.key==="PageDown"||e.key===" "){e.preventDefault();turnBookPage(1)}
+    else if(e.key==="f"||e.key==="F")toggleElementFs(readerEl);
+    return;
+  }
   if(player.hidden)return;
   if(e.key==="Escape"&&!document.fullscreenElement)stop();
   else if((e.key==="f"||e.key==="F"))togglePlayerFs();
   else if(e.key==="ArrowLeft"&&vplayer)vplayer.currentTime(Math.max(0,vplayer.currentTime()-10));
   else if(e.key==="ArrowRight"&&vplayer)vplayer.currentTime(vplayer.currentTime()+10);
 });
+
+/* ==================== LEITOR KINDLE (PDF) ==================== */
+const readerEl=document.getElementById("reader"),rTitle=document.getElementById("rtitle"),rSub=document.getElementById("rsub");
+const rAmber=document.getElementById("r-amber"),rSettings=document.getElementById("r-settings");
+const rCanvasWrap=document.getElementById("r-canvas-wrap"),rLoader=document.getElementById("r-loader");
+const rPages=document.getElementById("r-pages"),c1=document.getElementById("pdf-c1"),c2=document.getElementById("pdf-c2");
+const rReflow=document.getElementById("r-reflow"),rFrame=document.getElementById("r-frame");
+const rSlider=document.getElementById("r-slider"),rPageIn=document.getElementById("r-page-in"),rTotal=document.getElementById("r-total");
+const rPct=document.getElementById("r-pct"),rEta=document.getElementById("r-eta"),rZoomVal=document.getElementById("rzoom-val");
+const rBmkBtn=document.getElementById("r-bmk-btn"),rWatchedBtn=document.getElementById("r-watched-btn"),rBmkList=document.getElementById("r-bmk-list");
+
+if(window.pdfjsLib){
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+}
+
+let curBook=null,pdfDoc=null,bookPage=1,bookTotal=1,bookMode="page",bookSpread=1,bookZoom=1,kindleFontPx=20,renderToken=0;
+
+function rPrefKey(){return "iptv_rpref_"+uPrefix()}
+function bmkKey(){return "iptv_bmk_"+uPrefix()}
+function getRPrefs(){try{return JSON.parse(localStorage.getItem(rPrefKey())||"{}")}catch{return {}}}
+function saveRPrefs(patch){
+  const curP=getRPrefs();
+  Object.assign(curP,patch);
+  localStorage.setItem(rPrefKey(),JSON.stringify(curP));
+}
+function getBookBmks(id){
+  try{const m=JSON.parse(localStorage.getItem(bmkKey())||"{}");return Array.isArray(m[id])?m[id]:[]}catch{return []}
+}
+function toggleBookBmk(id,pg){
+  try{
+    const m=JSON.parse(localStorage.getItem(bmkKey())||"{}");
+    const list=Array.isArray(m[id])?m[id]:[];
+    const idx=list.indexOf(pg);
+    if(idx>=0)list.splice(idx,1);else list.push(pg);
+    list.sort((a,b)=>a-b);
+    m[id]=list;
+    localStorage.setItem(bmkKey(),JSON.stringify(m));
+  }catch{}
+  updateBmkUI();
+}
+
+function saveBookProgress(id,pg,tot){
+  if(!id||!tot)return;
+  const m=getProgMap();
+  m[id]={t:pg,d:tot};
+  localStorage.setItem(pKey(),JSON.stringify(m));
+  if(pg>=tot)setWatched(id,true);
+}
+
+function applyReaderTheme(theme){
+  readerEl.classList.remove("theme-light","theme-sepia","theme-dark","theme-amoled");
+  readerEl.classList.add("theme-"+theme);
+  readerEl.querySelectorAll(".rtheme").forEach(b=>b.classList.toggle("active",b.dataset.theme===theme));
+  saveRPrefs({theme});
+}
+
+function applyComfort(bright,warmth,font){
+  rCanvasWrap.style.filter=`brightness(${bright}%)`;
+  rAmber.style.background=`rgba(255,140,0,${(warmth/100)*0.45})`;
+  if(font)rReflow.style.fontFamily=font;
+  document.getElementById("r-bright-val").textContent=bright+"%";
+  document.getElementById("r-warmth-val").textContent=warmth+"%";
+  saveRPrefs({bright,warmth,font});
+}
+
+function updateBmkUI(){
+  if(!curBook)return;
+  const list=getBookBmks(curBook.id);
+  const marked=list.includes(bookPage);
+  rBmkBtn.classList.toggle("active",marked);
+  rBmkBtn.textContent=marked?"\uD83D\uDD16 Marcada":"\uD83D\uDD16 Marcar";
+  rBmkList.innerHTML="";
+  if(!list.length){
+    rBmkList.innerHTML="<span style='color:#888'>Nenhuma página marcada ainda</span>";
+    return;
+  }
+  list.forEach(p=>{
+    const ch=document.createElement("button");
+    ch.className="bmk-chip";
+    ch.textContent="P\u00e1g. "+p;
+    ch.onclick=()=>{goToBookPage(p);rSettings.hidden=true};
+    rBmkList.appendChild(ch);
+  });
+}
+
+function updateBookWatchedUI(){
+  if(!curBook)return;
+  const w=isWatched(curBook.id);
+  rWatchedBtn.classList.toggle("active",w);
+  rWatchedBtn.textContent=w?"\u2713 Lido":"\u2713 Marcar lido";
+}
+
+async function renderSingleCanvas(pageNum,canvas){
+  const page=await pdfDoc.getPage(pageNum);
+  const unscaled=page.getViewport({scale:1});
+  const availW=Math.max(280,(rCanvasWrap.clientWidth-120)/(bookSpread===2?2.05:1));
+  const availH=Math.max(320,rCanvasWrap.clientHeight-36);
+  const fitScale=Math.min(availW/unscaled.width,availH/unscaled.height);
+  const finalScale=Math.max(0.4,fitScale*bookZoom);
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  const vp=page.getViewport({scale:finalScale*dpr});
+  canvas.width=Math.floor(vp.width);
+  canvas.height=Math.floor(vp.height);
+  canvas.style.width=Math.floor(vp.width/dpr)+"px";
+  canvas.style.height=Math.floor(vp.height/dpr)+"px";
+  const ctx=canvas.getContext("2d");
+  await page.render({canvasContext:ctx,viewport:vp}).promise;
+}
+
+async function renderKindleText(pageNum){
+  const page=await pdfDoc.getPage(pageNum);
+  const tc=await page.getTextContent();
+  let lines=[],lastY=null,curLine="";
+  for(const item of tc.items){
+    const y=item.transform?Math.round(item.transform[5]):0;
+    if(lastY!==null&&Math.abs(y-lastY)>6){
+      lines.push(curLine.trim());
+      if(Math.abs(y-lastY)>18)lines.push("");
+      curLine=item.str;
+    }else{
+      curLine+=(curLine&&!curLine.endsWith(" ")&&!item.str.startsWith(" ")?" ":"")+item.str;
+    }
+    lastY=y;
+  }
+  if(curLine.trim())lines.push(curLine.trim());
+  const bodyText=lines.join("\n").trim();
+  rReflow.style.fontSize=kindleFontPx+"px";
+  rReflow.innerHTML="";
+  const head=document.createElement("div");
+  head.className="r-reflow-head";
+  head.innerHTML=`<span>${curBook.title}</span><span>P\u00e1gina ${pageNum} de ${bookTotal}</span>`;
+  const body=document.createElement("div");
+  body.textContent=bodyText||"(Esta página contém apenas imagens/ilustrações. Use o modo '📄 Página' acima para visualizá-la.)";
+  rReflow.append(head,body);
+  rCanvasWrap.scrollTop=0;
+}
+
+async function renderBookView(){
+  if(!curBook)return;
+  const myToken=++renderToken;
+  const pct=bookTotal>0?Math.round((bookPage/bookTotal)*100):0;
+  const minsLeft=Math.max(1,Math.round((bookTotal-bookPage)*1.2));
+  rSub.textContent=`P\u00e1gina ${bookPage} de ${bookTotal} \u2022 ${pct}% conclu\u00eddo`;
+  rSlider.max=bookTotal;
+  rSlider.value=bookPage;
+  rPageIn.max=bookTotal;
+  rPageIn.value=bookPage;
+  rTotal.textContent=bookTotal;
+  rPct.textContent=pct+"% conclu\u00eddo";
+  rEta.textContent=bookPage>=bookTotal?"\uD83C\uDF89 Leitura conclu\u00edda!":`~${minsLeft} min restantes`;
+  saveBookProgress(curBook.id,bookPage,bookTotal);
+  updateBmkUI();
+
+  document.getElementById("rmode-page").classList.toggle("active",bookMode==="page");
+  document.getElementById("rmode-kindle").classList.toggle("active",bookMode==="kindle");
+  document.getElementById("rmode-drive").classList.toggle("active",bookMode==="drive");
+  document.getElementById("rlayout-group").hidden=bookMode!=="page";
+  document.getElementById("rlay-1").classList.toggle("active",bookSpread===1);
+  document.getElementById("rlay-2").classList.toggle("active",bookSpread===2);
+
+  if(bookMode==="drive"){
+    rLoader.hidden=true;
+    rPages.hidden=true;
+    rReflow.hidden=true;
+    rFrame.hidden=false;
+    const targetSrc=`https://drive.google.com/file/d/${curBook.id}/preview`;
+    if(rFrame.src!==targetSrc)rFrame.src=targetSrc;
+    return;
+  }
+
+  rFrame.hidden=true;
+  if(!pdfDoc)return;
+
+  if(bookMode==="kindle"){
+    rPages.hidden=true;
+    rReflow.hidden=false;
+    rZoomVal.textContent=kindleFontPx+"px";
+    rLoader.hidden=false;
+    try{
+      await renderKindleText(bookPage);
+    }catch{}
+    if(myToken===renderToken)rLoader.hidden=true;
+    return;
+  }
+
+  rReflow.hidden=true;
+  rPages.hidden=false;
+  rZoomVal.textContent=Math.round(bookZoom*100)+"%";
+  rLoader.hidden=false;
+  try{
+    await renderSingleCanvas(bookPage,c1);
+    if(bookSpread===2&&bookPage+1<=bookTotal){
+      c2.hidden=false;
+      await renderSingleCanvas(bookPage+1,c2);
+    }else{
+      c2.hidden=true;
+    }
+    rCanvasWrap.scrollTop=0;
+  }catch{}
+  if(myToken===renderToken)rLoader.hidden=true;
+}
+
+function goToBookPage(n){
+  if(!bookTotal)return;
+  bookPage=Math.max(1,Math.min(bookTotal,Number(n)||1));
+  renderBookView();
+}
+
+function turnBookPage(dir){
+  const step=(bookMode==="page"&&bookSpread===2)?2:1;
+  goToBookPage(bookPage+dir*step);
+}
+
+async function openBook(b){
+  curBook=b;
+  rTitle.textContent=b.title;
+  rSub.textContent="Abrindo livro...";
+  rSettings.hidden=true;
+  readerEl.hidden=false;
+  pdfDoc=null;
+
+  const prefs=getRPrefs();
+  applyReaderTheme(prefs.theme||"sepia");
+  const bright=prefs.bright||100,warmth=prefs.warmth||0,font=prefs.font||"Georgia, 'Times New Roman', serif";
+  document.getElementById("r-bright").value=bright;
+  document.getElementById("r-warmth").value=warmth;
+  document.getElementById("r-font").value=font;
+  applyComfort(bright,warmth,font);
+
+  const savedP=getProg(b.id);
+  bookPage=(savedP&&savedP.t>=1)?savedP.t:1;
+  bookTotal=(savedP&&savedP.d>=1)?savedP.d:1;
+  bookMode="page";
+  bookZoom=1;
+  updateBookWatchedUI();
+  updateBmkUI();
+
+  rLoader.hidden=false;
+  rLoader.textContent="Carregando livro PDF...";
+  rPages.hidden=true;
+  rReflow.hidden=true;
+  rFrame.hidden=true;
+
+  try{
+    const loadingTask=window.pdfjsLib.getDocument({
+      url:`/api/stream?id=${b.id}&type=pdf`,
+      cMapUrl:"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/",
+      cMapPacked:true
+    });
+    pdfDoc=await loadingTask.promise;
+    bookTotal=pdfDoc.numPages||1;
+    if(bookPage>bookTotal)bookPage=1;
+    await renderBookView();
+  }catch{
+    bookMode="drive";
+    await renderBookView();
+  }
+}
+
+function closeBook(){
+  if(pdfDoc){try{pdfDoc.destroy()}catch{}pdfDoc=null}
+  rFrame.src="";
+  rSettings.hidden=true;
+  readerEl.hidden=true;
+  curBook=null;
+  buildBars();
+  render();
+}
+
+document.getElementById("r-close").onclick=closeBook;
+document.getElementById("r-prev").onclick=()=>turnBookPage(-1);
+document.getElementById("r-next").onclick=()=>turnBookPage(1);
+document.getElementById("r-prev-zone").onclick=()=>turnBookPage(-1);
+document.getElementById("r-next-zone").onclick=()=>turnBookPage(1);
+document.getElementById("rmode-page").onclick=()=>{bookMode="page";renderBookView()};
+document.getElementById("rmode-kindle").onclick=()=>{bookMode="kindle";renderBookView()};
+document.getElementById("rmode-drive").onclick=()=>{bookMode="drive";renderBookView()};
+document.getElementById("rlay-1").onclick=()=>{bookSpread=1;renderBookView()};
+document.getElementById("rlay-2").onclick=()=>{bookSpread=2;renderBookView()};
+readerEl.querySelectorAll(".rtheme").forEach(btn=>{
+  btn.onclick=()=>applyReaderTheme(btn.dataset.theme);
+});
+document.getElementById("rzoom-in").onclick=()=>{
+  if(bookMode==="kindle")kindleFontPx=Math.min(34,kindleFontPx+2);
+  else bookZoom=Math.min(2.5,+(bookZoom+0.15).toFixed(2));
+  renderBookView();
+};
+document.getElementById("rzoom-out").onclick=()=>{
+  if(bookMode==="kindle")kindleFontPx=Math.max(14,kindleFontPx-2);
+  else bookZoom=Math.max(0.5,+(bookZoom-0.15).toFixed(2));
+  renderBookView();
+};
+document.getElementById("rzoom-fit").onclick=()=>{
+  bookZoom=1;kindleFontPx=20;renderBookView();
+};
+document.getElementById("r-aa-btn").onclick=()=>{
+  rSettings.hidden=!rSettings.hidden;
+};
+document.getElementById("r-bright").oninput=e=>{
+  applyComfort(+e.target.value,+document.getElementById("r-warmth").value,document.getElementById("r-font").value);
+};
+document.getElementById("r-warmth").oninput=e=>{
+  applyComfort(+document.getElementById("r-bright").value,+e.target.value,document.getElementById("r-font").value);
+};
+document.getElementById("r-font").onchange=e=>{
+  applyComfort(+document.getElementById("r-bright").value,+document.getElementById("r-warmth").value,e.target.value);
+};
+rBmkBtn.onclick=()=>{if(curBook)toggleBookBmk(curBook.id,bookPage)};
+rWatchedBtn.onclick=()=>{
+  if(!curBook)return;
+  const next=!isWatched(curBook.id);
+  setWatched(curBook.id,next);
+  updateBookWatchedUI();
+  syncCardState(curBook.id);
+};
+document.getElementById("r-fs-btn").onclick=()=>toggleElementFs(readerEl);
+rSlider.oninput=e=>{rPageIn.value=e.target.value};
+rSlider.onchange=e=>goToBookPage(e.target.value);
+rPageIn.onchange=e=>goToBookPage(e.target.value);
+
+let touchStartX=0,touchStartY=0;
+rCanvasWrap.addEventListener("touchstart",e=>{
+  if(e.touches.length===1){touchStartX=e.touches[0].clientX;touchStartY=e.touches[0].clientY}
+},{passive:true});
+rCanvasWrap.addEventListener("touchend",e=>{
+  if(!e.changedTouches.length)return;
+  const dx=e.changedTouches[0].clientX-touchStartX;
+  const dy=e.changedTouches[0].clientY-touchStartY;
+  if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5){
+    if(dx<0)turnBookPage(1);else turnBookPage(-1);
+  }
+},{passive:true});
 
 searchInput.oninput=e=>{searchTerm=e.target.value;render()};
 document.getElementById("home").onclick=e=>{e.preventDefault();stack=[];activeCat="ALL";activeSub="ALL";savedCat="ALL";savedSub="ALL";searchInput.value="";searchTerm="";load()};

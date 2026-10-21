@@ -52,5 +52,95 @@
     <button id="alt">Player alternativo (Drive)</button>
   </div>
 </div>
+<div id="reader" class="theme-sepia" hidden>
+  <div id="r-amber"></div>
+  <div class="rbar">
+    <div class="rtitle-wrap">
+      <span class="rbook-ico">&#128214;</span>
+      <div>
+        <h2 id="rtitle"></h2>
+        <span id="rsub" class="rsub">Carregando livro...</span>
+      </div>
+    </div>
+    <div class="rcontrols">
+      <div class="rgroup" title="Modo de visualização">
+        <button id="rmode-page" class="rbtn active">&#128196; Página</button>
+        <button id="rmode-kindle" class="rbtn">&#128214; Texto Kindle</button>
+        <button id="rmode-drive" class="rbtn">&#127760; Drive</button>
+      </div>
+      <div id="rlayout-group" class="rgroup" title="Layout de página">
+        <button id="rlay-1" class="rbtn active" title="1 Página">1 Pág</button>
+        <button id="rlay-2" class="rbtn" title="2 Páginas (Livro aberto)">2 Págs</button>
+      </div>
+      <div class="rgroup" title="Tema de leitura">
+        <button data-theme="light" class="rbtn rtheme" title="Claro (Papel)">&#9728;&#65039; Claro</button>
+        <button data-theme="sepia" class="rbtn rtheme active" title="Sépia (Kindle)">&#128220; Sépia</button>
+        <button data-theme="dark" class="rbtn rtheme" title="Modo Noturno">&#127769; Noturno</button>
+        <button data-theme="amoled" class="rbtn rtheme" title="Noturno AMOLED (Preto puro)">&#128420; AMOLED</button>
+      </div>
+      <div class="rgroup" title="Zoom / Tamanho da letra">
+        <button id="rzoom-out" class="rbtn">A&#8722;</button>
+        <span id="rzoom-val" class="rzoom-val">100%</span>
+        <button id="rzoom-in" class="rbtn">A+</button>
+        <button id="rzoom-fit" class="rbtn" title="Ajustar à tela">&#8596;</button>
+      </div>
+      <button id="r-aa-btn" class="rbtn" title="Conforto visual (Brilho e Luz Noturna)">&#9728; Conforto</button>
+      <button id="r-bmk-btn" class="rbtn" title="Marcar página">&#128278; Marcar</button>
+      <button id="r-watched-btn" class="rbtn" title="Marcar livro como lido">&#10003; Lido</button>
+      <button id="r-fs-btn" class="rbtn" title="Tela cheia">&#9974; Tela cheia</button>
+      <button id="r-close" class="rclose">&#10005; Voltar</button>
+    </div>
+  </div>
+  <div id="r-settings" class="r-popover" hidden>
+    <div class="rpop-row">
+      <label>&#128262; Brilho</label>
+      <input id="r-bright" type="range" min="45" max="100" value="100">
+      <span id="r-bright-val">100%</span>
+    </div>
+    <div class="rpop-row">
+      <label>&#128367; Filtro Luz Azul (Âmbar)</label>
+      <input id="r-warmth" type="range" min="0" max="60" value="0">
+      <span id="r-warmth-val">0%</span>
+    </div>
+    <div class="rpop-row">
+      <label>&#128292; Fonte (Modo Kindle)</label>
+      <select id="r-font">
+        <option value="Georgia, 'Times New Roman', serif">Kindle Serif (Bookerly/Georgia)</option>
+        <option value="'Palatino Linotype', Palatino, serif">Clássica (Palatino)</option>
+        <option value="system-ui, -apple-system, sans-serif">Moderna (Sans-serif)</option>
+      </select>
+    </div>
+    <div id="r-bmk-list-wrap" class="rpop-bmks">
+      <strong>&#128278; Páginas marcadas neste livro:</strong>
+      <div id="r-bmk-list"></div>
+    </div>
+  </div>
+  <div id="rstage" class="rstage">
+    <button id="r-prev-zone" class="rzone rzone-left" title="Página anterior">&#10094;</button>
+    <div id="r-canvas-wrap" class="r-canvas-wrap">
+      <div id="r-loader" class="r-loader" hidden>Carregando página...</div>
+      <div id="r-pages" class="r-pages">
+        <canvas id="pdf-c1"></canvas>
+        <canvas id="pdf-c2" hidden></canvas>
+      </div>
+      <div id="r-reflow" class="r-reflow" hidden></div>
+      <iframe id="r-frame" class="r-frame" hidden allow="autoplay; fullscreen" allowfullscreen></iframe>
+    </div>
+    <button id="r-next-zone" class="rzone rzone-right" title="Próxima página">&#10095;</button>
+  </div>
+  <div class="rfooter">
+    <button id="r-prev" class="rbtn">&#9664; Anterior</button>
+    <div class="rprog-center">
+      <input id="r-slider" type="range" min="1" max="1" value="1">
+      <div class="rprog-meta">
+        <span>Página <input id="r-page-in" type="number" min="1" value="1"> de <strong id="r-total">1</strong></span>
+        <span id="r-pct">0% concluído</span>
+        <span id="r-eta"></span>
+      </div>
+    </div>
+    <button id="r-next" class="rbtn">Próxima &#9654;</button>
+  </div>
+</div>
 <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="app.js"></script></body></html>
