@@ -48,12 +48,15 @@ function saveProg(id,time,dur){
   localStorage.setItem(pKey(),JSON.stringify(m));
 }
 
+let triedProxy=false;
+const memCache={};
+
 function initVjs(){
   if(vplayer)return vplayer;
   vplayer=window.videojs("vid",{
     controls:true,
     autoplay:true,
-    preload:"auto",
+    preload:"metadata",
     playbackRates:[0.5,0.75,1,1.25,1.5,2],
     fluid:false,
     responsive:true
@@ -84,7 +87,14 @@ function initVjs(){
     if(nxt)play(nxt);
   });
   vplayer.on("error",()=>{
-    if(cur)switchToAlt();
+    if(!cur)return;
+    if(!triedProxy){
+      triedProxy=true;
+      vplayer.src({src:"/api/stream?id="+cur.id+"&proxy=1",type:"video/mp4"});
+      vplayer.play().catch(()=>{});
+    }else{
+      switchToAlt();
+    }
   });
   return vplayer;
 }
@@ -350,9 +360,16 @@ function render(){
   videos.forEach(v=>card(v,"\uD83C\uDFAC",()=>play(v),"video"));
 }
 
-async function load(){
-  grid.innerHTML="";msg.textContent="Carregando...";
+async function load(forceRefresh=false){
   const curFolder=stack[stack.length-1];
+  const cacheKey=curFolder?curFolder.id:"__CATALOG__";
+  if(!forceRefresh&&memCache[cacheKey]){
+    lastData=memCache[cacheKey];
+    buildBars();
+    render();
+    return;
+  }
+  grid.innerHTML="";msg.textContent="Carregando...";
   const url="/api/list?"+(curFolder?"folder="+curFolder.id+"&":"mode=catalog&")+(bust?"t="+bust:"");
   const r=await fetch(url),j=await r.json();
   if(!r.ok){msg.textContent=j.error;return}
@@ -361,6 +378,7 @@ async function load(){
   const videos=(j.videos||[]).sort(nat);
   const books=(j.books||[]).sort(nat);
   lastData={folders,videos,books};
+  memCache[cacheKey]=lastData;
   buildBars();
   render();
 }
@@ -388,6 +406,7 @@ function switchToAlt(){
 
 function play(v){
   cur=v;
+  triedProxy=false;
   document.getElementById("ptitle").textContent=v.title;
   updatePlayerWatchedBtn();
   updateNavBtns();
@@ -993,8 +1012,8 @@ async function openBook(b){
   rReflow.hidden=true;
   rFrame.hidden=true;
 
-  try{
-    const streamUrl=`/api/stream?id=${b.id}&type=book`;
+  async function loadBookFromUrl(suffix){
+    const streamUrl=`/api/stream?id=${b.id}&type=book${suffix}`;
     if(ext==="epub"){
       const resp=await fetch(streamUrl);
       if(!resp.ok)throw new Error("erro download");
@@ -1018,12 +1037,20 @@ async function openBook(b){
       bookTotal=cbzImages.length;
     }else{
       const loadingTask=window.pdfjsLib.getDocument({
-        url:`/api/stream?id=${b.id}&type=pdf`,
+        url:`/api/stream?id=${b.id}&type=pdf${suffix}`,
         cMapUrl:"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/",
         cMapPacked:true
       });
       pdfDoc=await loadingTask.promise;
       bookTotal=pdfDoc.numPages||1;
+    }
+  }
+
+  try{
+    try{
+      await loadBookFromUrl("");
+    }catch{
+      await loadBookFromUrl("&proxy=1");
     }
     if(bookPage>bookTotal)bookPage=1;
     await renderBookView();
@@ -1227,7 +1254,7 @@ rCanvasWrap.addEventListener("touchend",e=>{
 
 searchInput.oninput=e=>{searchTerm=e.target.value;render()};
 document.getElementById("home").onclick=e=>{e.preventDefault();stack=[];activeCat="ALL";activeSub="ALL";savedCat="ALL";savedSub="ALL";searchInput.value="";searchTerm="";load()};
-document.getElementById("refresh").onclick=()=>{bust=Date.now();load()};
+document.getElementById("refresh").onclick=()=>{bust=Date.now();Object.keys(memCache).forEach(k=>delete memCache[k]);load(true)};
 
 function showApp(u){
   currentUser=u;

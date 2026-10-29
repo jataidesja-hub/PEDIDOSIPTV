@@ -145,7 +145,7 @@ export default async function handler(req, res) {
       };
     });
 
-    res.setHeader("Cache-Control", req.query.t ? "no-store" : "s-maxage=120, stale-while-revalidate=600");
+    res.setHeader("Cache-Control", req.query.t ? "no-store" : "public, max-age=120, s-maxage=900, stale-while-revalidate=3600");
     return res.json({ cover: folderCover, folders, videos, books });
   }
 
@@ -299,6 +299,6 @@ export default async function handler(req, res) {
     };
   });
 
-  res.setHeader("Cache-Control", req.query.t ? "no-store" : "s-maxage=120, stale-while-revalidate=600");
+  res.setHeader("Cache-Control", req.query.t ? "no-store" : "public, max-age=120, s-maxage=900, stale-while-revalidate=3600");
   res.json({ folders: outFolders, videos: outVideos, books: outBooks });
 }

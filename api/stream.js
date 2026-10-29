@@ -4,11 +4,20 @@ const CHUNK = 8 * 1024 * 1024;
 export default async function handler(req, res) {
   const key = process.env.GDRIVE_API_KEY, id = req.query.id;
   if (!key || !id || !/^[\w-]+$/.test(id)) return res.status(400).end("bad request");
+  const driveUrl = `https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true&key=${key}`;
+
+  // Por padrao redireciona (302) direto para os servidores do Google Drive:
+  // Isso reduz em 99.9% o "Fast Origin Transfer" e o uso de CPU da Vercel!
+  if (req.query.proxy !== "1") {
+    res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=86400");
+    return res.redirect(302, driveUrl);
+  }
+
   const isBook = req.query.type === "pdf" || req.query.type === "book";
   const rangeHeader = req.headers.range || "";
 
   if (isBook && !rangeHeader) {
-    const up = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true&key=${key}`);
+    const up = await fetch(driveUrl);
     if (!up.ok) return res.status(up.status).end(await up.text());
     res.status(200);
     res.setHeader("Content-Type", up.headers.get("content-type") || "application/octet-stream");
@@ -24,7 +33,7 @@ export default async function handler(req, res) {
   if (m) { start = +m[1]; end = m[2] ? +m[2] : undefined; }
   const cap = start + CHUNK - 1;
   end = end === undefined ? cap : Math.min(end, cap);
-  const up = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true&key=${key}`, { headers: { Range: `bytes=${start}-${end}` } });
+  const up = await fetch(driveUrl, { headers: { Range: `bytes=${start}-${end}` } });
   if (!up.ok && up.status !== 206) return res.status(up.status).end(await up.text());
   res.status(206);
   res.setHeader("Content-Type", up.headers.get("content-type") || (isBook ? "application/pdf" : "video/mp4"));
